@@ -1,0 +1,17 @@
+{
+  "name": "Pomoflow",
+  "short_name": "Pomoflow",
+  "description": "Simple, calm task tracking with pomodoro and flowtime focus sessions.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0f1a14",
+  "theme_color": "#0f1a14",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

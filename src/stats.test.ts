@@ -1,0 +1,209 @@
+import { describe, expect, it } from "vitest";
+import {
+  doneSessions,
+  focusByQuadrant,
+  focusByTag,
+  focusStreak,
+  sessionWorkMs,
+  tagAttention,
+  taskTotals,
+  todayTotals,
+  weekTotals,
+} from "./stats";
+import type { AppState, Session, Settings, Task } from "./types";
+
+const MIN = 60_000;
+
+const SETTINGS: Settings = {
+  pomodoroWorkMin: 25,
+  pomodoroShortBreakMin: 5,
+  pomodoroLongBreakMin: 15,
+  pomodoroLongBreakEvery: 4,
+  flowtimeBreakRatio: 0.2,
+  soundEnabled: true,
+  soundPreset: "chime",
+  autoBreak: true,
+  showEstimates: true,
+  notificationsEnabled: false,
+  maxFlowtimeMin: 0,
+  theme: "night",
+};
+
+function flowSession(overrides: Partial<Session> = {}): Session {
+  return {
+    id: "s" + Math.random().toString(36).slice(2),
+    taskId: "t1",
+    technique: "flowtime",
+    plannedMs: 0,
+    startedAt: 0,
+    pausedAt: null,
+    accumulatedPauseMs: 0,
+    completedPomodoros: 0,
+    endedAt: 0,
+    status: "done",
+    ...overrides,
+  };
+}
+
+function task(overrides: Partial<Task> = {}): Task {
+  return {
+    id: "t1",
+    title: "Task",
+    priority: 2,
+    quadrant: "q1",
+    done: false,
+    createdAt: 0,
+    doneAt: null,
+    estimatedMin: null,
+    quick: false,
+    tags: [],
+    description: "",
+    plannedFor: null,
+    ...overrides,
+  };
+}
+
+function atLocalMidnight(daysAgo: number): number {
+  const d = new Date();
+  d.setDate(d.getDate() - daysAgo);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+describe("sessionWorkMs", () => {
+  it("derives pomodoro work from completed blocks", () => {
+    const s = flowSession({ technique: "pomodoro", completedPomodoros: 3 });
+    expect(sessionWorkMs(s, SETTINGS)).toBe(3 * 25 * MIN);
+  });
+
+  it("uses active elapsed time for flowtime", () => {
+    const s = flowSession({ startedAt: 0, endedAt: 60 * MIN, accumulatedPauseMs: 10 * MIN });
+    expect(sessionWorkMs(s, SETTINGS)).toBe(50 * MIN);
+  });
+});
+
+describe("taskTotals", () => {
+  it("aggregates done sessions for a task", () => {
+    const sessions = [
+      flowSession({
+        taskId: "t1",
+        endedAt: 10 * MIN,
+        completedPomodoros: 2,
+        technique: "pomodoro",
+      }),
+      flowSession({ taskId: "t1", endedAt: 20 * MIN }),
+      flowSession({ taskId: "t2", endedAt: 30 * MIN }),
+      flowSession({ taskId: "t1", status: "running", endedAt: null }),
+    ];
+    const totals = taskTotals("t1", sessions, SETTINGS);
+    expect(totals.sessionCount).toBe(2);
+    expect(totals.workMs).toBe(2 * 25 * MIN + 20 * MIN);
+    expect(totals.pomodoroCount).toBe(2);
+  });
+});
+
+describe("doneSessions", () => {
+  it("returns only finished sessions, newest first", () => {
+    const sessions = [
+      flowSession({ id: "a", endedAt: 100 }),
+      flowSession({ id: "b", endedAt: 200, status: "running" }),
+      flowSession({ id: "c", endedAt: 150 }),
+    ];
+    expect(doneSessions({ sessions } as AppState).map((s) => s.id)).toEqual(["c", "a"]);
+  });
+});
+
+describe("todayTotals / weekTotals", () => {
+  it("counts sessions that ended today", () => {
+    const today = atLocalMidnight(0);
+    const sessions = [flowSession({ startedAt: today, endedAt: today + 30 * MIN })];
+    const totals = todayTotals(sessions, SETTINGS);
+    expect(totals.workMs).toBe(30 * MIN);
+    expect(totals.sessionCount).toBe(1);
+  });
+
+  it("ignores yesterday for today totals but includes it in the week", () => {
+    const yesterday = atLocalMidnight(1);
+    const sessions = [flowSession({ startedAt: yesterday, endedAt: yesterday + 30 * MIN })];
+    expect(todayTotals(sessions, SETTINGS).workMs).toBe(0);
+    expect(weekTotals(sessions, SETTINGS).workMs).toBe(30 * MIN);
+  });
+});
+
+describe("focusStreak", () => {
+  it("counts consecutive days ending today", () => {
+    const sessions = [0, 1, 2].map((daysAgo) =>
+      flowSession({ endedAt: atLocalMidnight(daysAgo) + 60 * MIN }),
+    );
+    expect(focusStreak(sessions)).toBe(3);
+  });
+
+  it("counts from yesterday when today is empty", () => {
+    const sessions = [1, 2].map((daysAgo) =>
+      flowSession({ endedAt: atLocalMidnight(daysAgo) + 60 * MIN }),
+    );
+    expect(focusStreak(sessions)).toBe(2);
+  });
+
+  it("breaks the streak when there is a gap", () => {
+    const sessions = [0, 1, 3].map((daysAgo) =>
+      flowSession({ endedAt: atLocalMidnight(daysAgo) + 60 * MIN }),
+    );
+    expect(focusStreak(sessions)).toBe(2);
+  });
+});
+
+describe("tagAttention", () => {
+  it("counts open tasks per tag, ignoring done ones", () => {
+    const tasks = [
+      task({ id: "a", tags: ["work"], done: false }),
+      task({ id: "b", tags: ["work", "home"], done: false }),
+      task({ id: "c", tags: ["work"], done: true }),
+      task({ id: "d", tags: [], done: false }),
+    ];
+    const counts = tagAttention(tasks);
+    const work = counts.find((c) => c.tag === "work");
+    const home = counts.find((c) => c.tag === "home");
+    expect(work?.open).toBe(2);
+    expect(home?.open).toBe(1);
+  });
+});
+
+describe("focusByQuadrant", () => {
+  it("buckets work by quadrant and labels deleted tasks", () => {
+    const tasks = [task({ id: "t1", quadrant: "q1" }), task({ id: "t2", quadrant: "q2" })];
+    const sessions = [
+      flowSession({ taskId: "t1", endedAt: 10 * MIN }),
+      flowSession({ taskId: "t2", endedAt: 20 * MIN }),
+      flowSession({ taskId: "deleted", endedAt: 30 * MIN }),
+    ];
+    const buckets = focusByQuadrant(sessions, tasks, SETTINGS);
+    expect(buckets).toEqual([
+      { key: "q1", workMs: 10 * MIN },
+      { key: "q2", workMs: 20 * MIN },
+      { key: "deleted", workMs: 30 * MIN },
+    ]);
+  });
+});
+
+describe("focusByTag", () => {
+  it("buckets work per tag, with untagged tasks in 'untagged'", () => {
+    const tasks = [
+      task({ id: "t1", tags: ["work"] }),
+      task({ id: "t2", tags: ["work", "home"] }),
+      task({ id: "t3", tags: [] }),
+    ];
+    const sessions = [
+      flowSession({ taskId: "t1", endedAt: 10 * MIN }),
+      flowSession({ taskId: "t2", endedAt: 20 * MIN }),
+      flowSession({ taskId: "t3", endedAt: 30 * MIN }),
+    ];
+    const buckets = focusByTag(sessions, tasks, SETTINGS);
+    const work = buckets.find((b) => b.key === "work");
+    const home = buckets.find((b) => b.key === "home");
+    const untagged = buckets.find((b) => b.key === "untagged");
+    expect(work?.workMs).toBe(30 * MIN);
+    expect(home?.workMs).toBe(20 * MIN);
+    expect(untagged?.workMs).toBe(30 * MIN);
+  });
+});
