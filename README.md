@@ -45,7 +45,8 @@ peace of mind to feature creep. It is designed to be:
 ### Insight without noise
 
 - Today and week focus totals, focus streak
-- Dashboard: focus by quadrant and tag, open tasks by quadrant, areas needing attention
+- Dashboard: focus trend and weekday rhythm charts, focus by quadrant and tag, open tasks by
+  quadrant, areas needing attention, recent sessions
 - Session history per task, with editable notes
 
 ### Data you own

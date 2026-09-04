@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  dailyFocus,
   doneSessions,
   focusByQuadrant,
   focusByTag,
@@ -8,6 +9,7 @@ import {
   tagAttention,
   taskTotals,
   todayTotals,
+  weekdayAverages,
   weekTotals,
 } from "./stats";
 import type { AppState, Session, Settings, Task } from "./types";
@@ -205,5 +207,38 @@ describe("focusByTag", () => {
     expect(work?.workMs).toBe(30 * MIN);
     expect(home?.workMs).toBe(20 * MIN);
     expect(untagged?.workMs).toBe(30 * MIN);
+  });
+});
+
+describe("dailyFocus", () => {
+  it("returns a fixed window of days with per-day totals", () => {
+    const today = atLocalMidnight(0);
+    const sessions = [
+      flowSession({ startedAt: today, endedAt: today + 30 * MIN }),
+      flowSession({ startedAt: today, endedAt: today + 15 * MIN }),
+      flowSession({ startedAt: atLocalMidnight(2), endedAt: atLocalMidnight(2) + 10 * MIN }),
+    ];
+    const days = dailyFocus(sessions, SETTINGS, 14);
+    expect(days).toHaveLength(14);
+    expect(days[13].workMs).toBe(45 * MIN);
+    expect(days[11].workMs).toBe(10 * MIN);
+    expect(days[13].dayStart).toBe(today);
+    expect(days[0].workMs).toBe(0);
+  });
+});
+
+describe("weekdayAverages", () => {
+  it("averages work per weekday over the observed weeks", () => {
+    const today = atLocalMidnight(0);
+    const sessions = [flowSession({ startedAt: today, endedAt: today + 60 * MIN })];
+    const averages = weekdayAverages(sessions, SETTINGS);
+    expect(averages).toHaveLength(7);
+    expect(averages.some((v) => v > 0)).toBe(true);
+    const todayWeekday = (new Date(today).getDay() + 6) % 7;
+    expect(averages[todayWeekday]).toBe(60 * MIN);
+  });
+
+  it("returns zeros when there are no finished sessions", () => {
+    expect(weekdayAverages([], SETTINGS)).toEqual([0, 0, 0, 0, 0, 0, 0]);
   });
 });

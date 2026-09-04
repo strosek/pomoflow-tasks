@@ -21,6 +21,7 @@ import { formatDay, startOfWeek } from "./dates";
 import { escapeHtml } from "./escape";
 import { icon } from "./icons";
 import {
+  dailyFocus,
   doneSessions,
   focusByQuadrant,
   focusByTag,
@@ -29,6 +30,7 @@ import {
   tagAttention,
   taskTotals,
   todayTotals,
+  weekdayAverages,
   weekDayCount,
   weekTotals,
 } from "./stats";
@@ -217,6 +219,66 @@ function planListHtml(title: string, items: Task[], extraClass = ""): string {
     </section>`;
 }
 
+/* ------------------------------------------------------------------ */
+/* Task row / chart helpers (0041, 0038)                               */
+/* ------------------------------------------------------------------ */
+
+const PRIORITY_COLORS = [
+  "",
+  "var(--clay)",
+  "var(--gold)",
+  "var(--earth)",
+  "var(--moss)",
+  "var(--text-faint)",
+];
+
+function priorityDotsHtml(priority: number): string {
+  let out = "";
+  for (let i = 1; i <= 5; i++) {
+    const filled = i <= priority;
+    out += `<span class="pdot ${filled ? "on" : ""}"${filled ? ` style="background:${PRIORITY_COLORS[priority]}"` : ""}></span>`;
+  }
+  return out;
+}
+
+/** Horizontal proportion bars (label + track + value). */
+function barRows(items: { label: string; value: number; display: string }[]): string {
+  const max = Math.max(1, ...items.map((i) => i.value));
+  return `<ul class="bar-list">${items
+    .map(
+      (i) => `<li>
+        <span class="bar-label">${i.label}</span>
+        <span class="bar-track"><span class="bar-fill" style="width:${Math.round((i.value / max) * 100)}%" aria-hidden="true"></span></span>
+        <strong class="bar-value">${i.display}</strong>
+      </li>`,
+    )
+    .join("")}</ul>`;
+}
+
+function barHeight(ms: number, max: number): string {
+  return ms > 0 ? `${Math.max(4, Math.round((ms / max) * 100))}%` : "3px";
+}
+
+/** Vertical bar columns for a time series (focus trend / weekday rhythm). */
+function chartColumns(
+  cols: { label: string; tooltip: string; ms: number }[],
+  ariaLabel: string,
+  todayIndex: number | null = null,
+): string {
+  const max = Math.max(1, ...cols.map((c) => c.ms));
+  return `<div class="chart-bars" role="img" aria-label="${escapeHtml(ariaLabel)}">${cols
+    .map(
+      (
+        c,
+        i,
+      ) => `<div class="chart-col ${i === todayIndex ? "today" : ""} ${c.ms === 0 ? "zero" : ""}" title="${escapeHtml(c.tooltip)}">
+        <div class="chart-bar-area"><span class="chart-bar" style="height:${barHeight(c.ms, max)}"></span></div>
+        <span class="chart-col-label">${escapeHtml(c.label)}</span>
+      </div>`,
+    )
+    .join("")}</div>`;
+}
+
 function renderBoard(): void {
   updateDocumentTitle(null);
 
@@ -251,13 +313,13 @@ function renderBoard(): void {
         bits.push(`${t.pomodoroCount} pomodoro${t.pomodoroCount === 1 ? "" : "s"}`);
 
       return `
-      <li class="task ${task.done ? "done" : ""} ${isOverdueOpen(task) ? "overdue" : ""}">
+      <li class="task ${task.quadrant} ${task.done ? "done" : ""} ${isOverdueOpen(task) ? "overdue" : ""}">
         <button class="check" data-action="toggle" data-id="${task.id}" aria-label="Toggle done" aria-pressed="${task.done ? "true" : "false"}">${task.done ? "✓" : ""}</button>
         <div class="task-body">
           <span class="task-title">${escapeHtml(task.title)}${isOverdueOpen(task) ? `<span class="overdue-badge">overdue</span>` : ""}</span>
           <span class="task-meta">
             <span class="quadrant ${task.quadrant}">${QUADRANT_LABEL[task.quadrant]}</span>
-            <span class="priority">P${task.priority}</span>
+            <span class="priority-dots" title="Priority ${task.priority} of 5" aria-label="Priority ${task.priority} of 5">${priorityDotsHtml(task.priority)}</span>
             ${
               settings.showEstimates
                 ? `<input type="number" class="est-input" data-estimate="${task.id}" value="${task.estimatedMin ?? ""}" min="0" placeholder="est" aria-label="Estimated minutes" />`
@@ -271,8 +333,8 @@ function renderBoard(): void {
                   .join("")}</span>`
               : ""
           }
-          ${bits.length ? `<span class="task-stats">${bits.join(" · ")}</span>` : ""}
         </div>
+        ${bits.length ? `<span class="task-stats">${bits.join(" · ")}</span>` : ""}
         <div class="task-actions">
           <button class="primary icon-btn" data-action="start" data-id="${task.id}" title="Start a session" aria-label="Start a session">${icon("play")}</button>
           <button class="icon-btn ${task.quick ? "on" : ""}" data-action="toggle-quick" data-id="${task.id}" title="${task.quick ? "Remove quick mark" : "Mark as quick"}" aria-label="${task.quick ? "Remove quick mark" : "Mark as quick"}" aria-pressed="${task.quick ? "true" : "false"}">${icon("bolt")}</button>
@@ -327,11 +389,10 @@ function renderBoard(): void {
 
   app.innerHTML = `
     ${pageHeaderHtml()}
-    ${summaryBarHtml()}
-    ${boardControlsHtml()}
-    ${planListHtml("Today", todayOpen)}
-    ${quickSection}
-    ${planListHtml("Later", laterOpen, "deferred")}
+    <div class="toolbar">
+      ${summaryBarHtml()}
+      ${boardControlsHtml()}
+    </div>
     <section class="add-task">
       <input id="task-title" type="text" placeholder="What do you need to do? #tag" autocomplete="off" />
       <div class="add-task-row">
@@ -356,9 +417,14 @@ function renderBoard(): void {
       </div>
     </section>
 
+    ${planListHtml("Today", todayOpen)}
+
     <main class="board">
       ${mainTasks.length === 0 ? `<p class="empty">${emptyMsg}</p>` : `<ul class="task-list">${rows}</ul>`}
     </main>
+
+    ${planListHtml("Later", laterOpen, "deferred")}
+    ${quickSection}
     <p class="shortcut-hint">N new task · / search · Space pause/resume · F finish · Esc close</p>`;
 }
 
@@ -453,6 +519,114 @@ function renderDashboard(): void {
     deleted: "Deleted tasks",
   };
 
+  const hasSessions = state.sessions.some((s) => s.status === "done");
+  const weekdayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const weekdayShort = ["M", "T", "W", "T", "F", "S", "S"];
+
+  const trendHtml = hasSessions
+    ? chartColumns(
+        dailyFocus(state.sessions, settings, 14).map((d) => {
+          const date = new Date(d.dayStart);
+          return {
+            label: date.toLocaleDateString([], { weekday: "narrow" }),
+            tooltip: `${date.toLocaleDateString([], { month: "short", day: "numeric" })} · ${formatDuration(d.workMs)}`,
+            ms: d.workMs,
+          };
+        }),
+        "Focus time for the last 14 days",
+        13,
+      )
+    : null;
+
+  const weekdayHtml = hasSessions
+    ? chartColumns(
+        weekdayAverages(state.sessions, settings).map((avg, i) => ({
+          label: weekdayShort[i],
+          tooltip: `${weekdayNames[i]} · avg ${formatDuration(avg)}`,
+          ms: avg,
+        })),
+        "Average focus per weekday",
+        (new Date().getDay() + 6) % 7,
+      )
+    : null;
+
+  const quadrantBars =
+    total === 0
+      ? null
+      : barRows(
+          (["q1", "q2", "q3", "q4"] as Quadrant[]).map((q) => ({
+            label: QUADRANT_LABEL[q],
+            value: quadrantOpen[q],
+            display: String(quadrantOpen[q]),
+          })),
+        );
+
+  const tagBars = tags.length
+    ? barRows(
+        tags.map((t) => ({
+          label: `#${escapeHtml(t.tag)}`,
+          value: t.open,
+          display: String(t.open),
+        })),
+      )
+    : null;
+
+  const quadFocusBars = quadFocus.length
+    ? barRows(
+        quadFocus.map((b) => ({
+          label: quadLabel[b.key] ?? escapeHtml(b.key),
+          value: b.workMs,
+          display: formatDuration(b.workMs),
+        })),
+      )
+    : null;
+
+  const tagFocusBars = tagFocus.length
+    ? barRows(
+        tagFocus.map((b) => ({
+          label: `#${escapeHtml(b.key)}`,
+          value: b.workMs,
+          display: formatDuration(b.workMs),
+        })),
+      )
+    : null;
+
+  const recent = doneSessions(state).slice(0, 8);
+  const recentHtml = recent.length
+    ? `<table class="dash-table">
+        <thead>
+          <tr><th>Task</th><th>Technique</th><th>Duration</th><th>Ended</th></tr>
+        </thead>
+        <tbody>
+          ${recent
+            .map((s) => {
+              const work = sessionWorkMs(s, settings);
+              const task = taskById(s.taskId);
+              const ended = new Date(s.endedAt ?? s.startedAt).toLocaleString([], {
+                month: "short",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              });
+              const pomoBit =
+                s.technique === "pomodoro" && s.completedPomodoros > 0
+                  ? ` · ${s.completedPomodoros}×`
+                  : "";
+              const taskCell = task
+                ? `<button class="table-task" data-action="task-history" data-id="${task.id}" title="View history">${escapeHtml(task.title)}</button>`
+                : `<span class="table-muted">(deleted task)</span>`;
+              return `<tr>
+                <td>${taskCell}</td>
+                <td>${techniqueLabel(s.technique)}</td>
+                <td>${formatDuration(work)}${pomoBit}</td>
+                <td>${ended}</td>
+              </tr>`;
+            })
+            .join("")}
+        </tbody>
+      </table>`
+    : null;
+
   app.innerHTML = `
     ${pageHeaderHtml()}
     <main class="board">
@@ -476,31 +650,39 @@ function renderDashboard(): void {
           </ul>
         </section>
         <section class="dash-card">
-          <h3>Open tasks by quadrant</h3>
-          <ul class="dash-stats">
-            ${(["q1", "q2", "q3", "q4"] as Quadrant[])
-              .map(
-                (q) =>
-                  `<li><span>${QUADRANT_LABEL[q]}</span><strong>${quadrantOpen[q]}</strong></li>`,
-              )
-              .join("")}
-          </ul>
-        </section>
-        <section class="dash-card">
-          <h3>Areas needing attention</h3>
-          ${tags.length ? `<ul class="dash-stats">${tags.map((t) => `<li><span>#${escapeHtml(t.tag)}</span><strong>${t.open}</strong></li>`).join("")}</ul>` : `<p class="dialog-text">No open tags yet. Add tasks with #tags to see areas here.</p>`}
-        </section>
-        <section class="dash-card">
           <h3>Today</h3>
           ${plannedToday.length ? `<ul class="quick-list">${plannedToday.map((t) => `<li class="quick-item"><span class="task-title">${escapeHtml(t.title)}</span><button class="primary icon-btn" data-action="start" data-id="${t.id}" title="Start session" aria-label="Start session">${icon("play")}</button></li>`).join("")}</ul>` : `<p class="dialog-text">Nothing planned for today.</p>`}
         </section>
+        <section class="dash-card wide">
+          <h3>Focus trend</h3>
+          ${trendHtml ?? `<p class="dialog-text">No finished sessions yet.</p>`}
+        </section>
+        <section class="dash-card">
+          <h3>Week rhythm</h3>
+          ${weekdayHtml ?? `<p class="dialog-text">No finished sessions yet.</p>`}
+        </section>
+        <section class="dash-card">
+          <h3>Open tasks by quadrant</h3>
+          ${quadrantBars ?? `<p class="dialog-text">No tasks yet.</p>`}
+        </section>
+        <section class="dash-card">
+          <h3>Areas needing attention</h3>
+          ${tagBars ?? `<p class="dialog-text">No open tags yet. Add tasks with #tags to see areas here.</p>`}
+        </section>
         <section class="dash-card">
           <h3>Focus by quadrant</h3>
-          ${quadFocus.length ? `<ul class="dash-stats">${quadFocus.map((b) => `<li><span>${quadLabel[b.key] ?? b.key}</span><strong>${formatDuration(b.workMs)}</strong></li>`).join("")}</ul>` : `<p class="dialog-text">No finished sessions yet.</p>`}
+          ${quadFocusBars ?? `<p class="dialog-text">No finished sessions yet.</p>`}
         </section>
         <section class="dash-card">
           <h3>Focus by tag</h3>
-          ${tagFocus.length ? `<ul class="dash-stats">${tagFocus.map((b) => `<li><span>#${escapeHtml(b.key)}</span><strong>${formatDuration(b.workMs)}</strong></li>`).join("")}</ul>` : `<p class="dialog-text">No finished sessions yet.</p>`}
+          ${tagFocusBars ?? `<p class="dialog-text">No finished sessions yet.</p>`}
+        </section>
+        <section class="dash-card wide">
+          <div class="dash-card-head">
+            <h3>Recent sessions</h3>
+            <button class="icon-btn" data-action="view-history" title="View all history" aria-label="View all history">${icon("history")}</button>
+          </div>
+          ${recentHtml ?? `<p class="dialog-text">No finished sessions yet.</p>`}
         </section>
       </div>
     </main>`;

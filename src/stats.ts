@@ -174,3 +174,57 @@ export function focusByTag(sessions: Session[], tasks: Task[], settings: Setting
     .map(([key, workMs]) => ({ key, workMs }))
     .sort((a, b) => b.workMs - a.workMs);
 }
+
+/* ------------------------------------------------------------------ */
+/* Dashboard charts (0038)                                             */
+/* ------------------------------------------------------------------ */
+
+export interface DayFocus {
+  dayStart: number; // local midnight
+  workMs: number;
+}
+
+/** Daily work time for the last `days` days (including today), oldest first. */
+export function dailyFocus(
+  sessions: Session[],
+  settings: Settings,
+  days: number,
+  now: number = Date.now(),
+): DayFocus[] {
+  const today = startOfLocalDay(now);
+  const first = today - (days - 1) * DAY_MS;
+  const map = new Map<number, number>();
+  for (const s of sessions) {
+    if (s.status !== "done") continue;
+    const end = s.endedAt ?? s.startedAt;
+    if (end < first || end > today + DAY_MS) continue;
+    const day = startOfLocalDay(end);
+    map.set(day, (map.get(day) ?? 0) + sessionWorkMs(s, settings));
+  }
+  const out: DayFocus[] = [];
+  for (let i = 0; i < days; i++) {
+    const day = first + i * DAY_MS;
+    out.push({ dayStart: day, workMs: map.get(day) ?? 0 });
+  }
+  return out;
+}
+
+/** Average work time per weekday (Mon..Sun) across the observed weeks. */
+export function weekdayAverages(sessions: Session[], settings: Settings): number[] {
+  const sums = new Array<number>(7).fill(0);
+  const todayWeek = startOfWeek(Date.now());
+  let earliestWeek = todayWeek;
+  let any = false;
+  for (const s of sessions) {
+    if (s.status !== "done") continue;
+    const end = s.endedAt ?? s.startedAt;
+    const weekday = (new Date(end).getDay() + 6) % 7; // Mon = 0
+    sums[weekday] += sessionWorkMs(s, settings);
+    const week = startOfWeek(end);
+    if (week < earliestWeek) earliestWeek = week;
+    any = true;
+  }
+  if (!any) return new Array<number>(7).fill(0);
+  const weeks = Math.floor((todayWeek - earliestWeek) / (7 * DAY_MS)) + 1;
+  return sums.map((total) => Math.round(total / weeks));
+}
