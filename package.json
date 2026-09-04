@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "examples": "node scripts/generate-examples.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

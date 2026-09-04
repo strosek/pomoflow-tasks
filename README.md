@@ -92,6 +92,22 @@ npm run preview  # preview the production build
 - Synthesized audio cues (no asset files)
 - Vitest, ESLint, and Prettier for quality
 
+## Trying it with example data
+
+`examples/` contains realistic export files you can load from **Settings → Import data**:
+
+- `typical-2-months.json` — a mixed user: ~17 tasks across quadrants/priorities, ~2 months of
+  pomodoro and flowtime sessions, plans for today and later.
+- `flowtime-focused.json` — a flowtime-first user with longer deep-work sessions, progress notes,
+  day theme, and a max-flowtime cap.
+
+Dates are generated relative to today, so the dashboard, streak, and Today/Later sections are
+immediately populated. Regenerate them at any time:
+
+```bash
+npm run examples
+```
+
 ## Notes
 
 - A single-page, front-end-only app by design (see `INTENT.md`).
