@@ -1,0 +1,33 @@
+# Pomoflow
+
+> One thing at a time.
+
+Pomoflow is a free, browser-only task tracker for people who juggle too much. It pairs a simple
+urgent/important (Eisenhower) task board with the two focus techniques that actually help —
+**Flowtime** for deep, open-ended work and **Pomodoro** for steady progress. No account, no
+subscription, no server: all data lives in the user's browser.
+
+## Key features
+
+- Urgent/important task board with priorities 1–5
+- Pomodoro and Flowtime timers, drift-free (computed from wall-clock timestamps)
+- Recurring tasks: daily, work days (Mon–Fri), weekly, or monthly, with a scheduled time
+- Quick tasks batched into one continuous focus run
+- Tags, optional time estimates, and task descriptions
+- Plan for today or defer to a later date; overdue tasks are surfaced clearly
+- Session history, focus dashboard (trend charts, quadrant/tag breakdowns), and focus streak
+- Browser notifications and optional sound cues
+- 100% offline-capable: data stored in localStorage, with JSON export/import and Markdown export
+- Dark forest-green theme with a light "day" mode
+
+## How it works
+
+Users add tasks on a board sorted by priority, mark daily routines as recurring, then start a
+Flowtime count-up or a timed Pomodoro session on any task. Completed sessions are recorded in
+history with notes, and the dashboard shows focus totals by day, weekday rhythm, quadrant, and
+tag.
+
+## Tech
+
+TypeScript, Vite, and vanilla DOM — no runtime dependencies. Single-page, front-end-only by
+design. Open the app, add a task, start focusing.

@@ -1,0 +1,17 @@
+User-agent: *
+Allow: /
+
+# AI/agentic crawlers are welcome too (the default above already allows them).
+User-agent: GPTBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+Sitemap: https://strosek.github.io/pomoflow-tasks/sitemap.xml

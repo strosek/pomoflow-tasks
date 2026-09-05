@@ -7,10 +7,86 @@
     <meta name="theme-color" content="#0f1a14" />
     <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <link rel="manifest" href="manifest.webmanifest" />
-    <title>Pomoflow</title>
+    <link rel="canonical" href="https://strosek.github.io/pomoflow-tasks/" />
+
+    <title>Pomoflow — Calm Task Tracker with Pomodoro & Flowtime Timers</title>
+    <meta
+      name="description"
+      content="Pomoflow is a free, browser-only task tracker with an urgent/important board, drift-free Pomodoro and Flowtime focus timers, tags, and repeatable routines. No account, no server — your data stays in your browser."
+    />
+    <meta name="robots" content="index, follow" />
+
+    <!-- Open Graph / social sharing -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Pomoflow" />
+    <meta property="og:title" content="Pomoflow — Calm Task Tracker with Pomodoro & Flowtime Timers" />
+    <meta
+      property="og:description"
+      content="A free, browser-only task tracker with Pomodoro and Flowtime timers. One thing at a time."
+    />
+    <meta property="og:url" content="https://strosek.github.io/pomoflow-tasks/" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Pomoflow — Calm Task Tracker" />
+    <meta
+      name="twitter:description"
+      content="Free, browser-only task tracker with Pomodoro & Flowtime timers. No account, no server."
+    />
+
+    <!-- Structured data -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Pomoflow",
+        "url": "https://strosek.github.io/pomoflow-tasks/",
+        "applicationCategory": "ProductivityApplication",
+        "operatingSystem": "Any",
+        "browserRequirements": "Requires JavaScript",
+        "description": "Free, browser-only task tracker pairing an urgent/important board with Pomodoro and Flowtime focus timers. Recurring routines, tags, quick tasks, and session history — all stored locally, no account or server required.",
+        "featureList": [
+          "Urgent/important task board",
+          "Pomodoro and Flowtime timers",
+          "Recurring tasks (daily, work days, weekly, monthly)",
+          "Tags, priorities, and time estimates",
+          "Session history and focus dashboard",
+          "100% offline and local"
+        ],
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        },
+        "author": {
+          "@type": "Person",
+          "name": "Pomoflow"
+        }
+      }
+    </script>
   </head>
   <body>
     <div id="app"></div>
+    <noscript>
+      <main style="max-width: 40rem; margin: 3rem auto; padding: 0 1rem; font-family: system-ui, sans-serif; line-height: 1.6">
+        <h1>Pomoflow — One thing at a time</h1>
+        <p>
+          Pomoflow is a free, browser-only task tracker for people who juggle too much. It pairs a
+          simple urgent/important task board with the two focus techniques that actually help:
+          <strong>Flowtime</strong> for deep, open-ended work and <strong>Pomodoro</strong> for
+          steady progress.
+        </p>
+        <h2>Features</h2>
+        <ul>
+          <li>Priorities 1–5 and the Eisenhower quadrant (urgent / important)</li>
+          <li>Tags, descriptions, and optional time estimates</li>
+          <li>Quick tasks batched into one continuous focus run</li>
+          <li>Recurring tasks: daily, work days, weekly, or monthly</li>
+          <li>Drift-free Pomodoro and Flowtime sessions with a focus mode</li>
+          <li>Session history, dashboard charts, and focus streak</li>
+          <li>100% local — no account, no server</li>
+        </ul>
+        <p>This app requires JavaScript. Enable it to start focusing.</p>
+      </main>
+    </noscript>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
