@@ -12,6 +12,10 @@ export default tseslint.config(
     languageOptions: { globals: globals.node },
   },
   {
+    files: ["public/sw.js"],
+    languageOptions: { globals: globals.worker },
+  },
+  {
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
     },

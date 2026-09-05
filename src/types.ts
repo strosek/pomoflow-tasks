@@ -35,6 +35,7 @@ export interface Task {
   description: string; // optional longer description (0026)
   plannedFor: number | null; // local midnight of the planned day (0029/0030)
   recurrence: Recurrence | null; // 0043: repeats after completion (null = one-off)
+  order: number; // 0048: manual ordering (used when sort is "manual")
 }
 
 /** 0014: break countdown started automatically after finishing a session. */

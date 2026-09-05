@@ -6,6 +6,7 @@ import {
   finishSession,
   handleAction,
   pauseSession,
+  reorderTasks,
   resumeSession,
   setEstimate,
   showIdleToast,
@@ -197,7 +198,9 @@ app.addEventListener("change", (e) => {
   if (target.dataset?.sort !== undefined) {
     const raw = (target as HTMLSelectElement).value;
     setSortBy(
-      (raw === "type" || raw === "newest" ? raw : "priority") as "priority" | "type" | "newest",
+      (raw === "type" || raw === "newest" || raw === "manual"
+        ? raw
+        : "priority") as "priority" | "type" | "newest" | "manual",
     );
     render();
   }
@@ -221,4 +224,45 @@ app.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && (e.target as HTMLElement).id === "task-title") {
     addTask();
   }
+});
+
+// Manual reordering via the grip handle (0048).
+let dragId: string | null = null;
+
+app.addEventListener("dragstart", (e) => {
+  const handle = (e.target as HTMLElement).closest<HTMLElement>("[data-grip]");
+  if (!handle) return;
+  const li = handle.closest<HTMLElement>(".task");
+  dragId = li?.dataset.id ?? null;
+  if (!dragId) return;
+  e.dataTransfer?.setData("text/plain", dragId);
+  e.dataTransfer!.effectAllowed = "move";
+  li!.classList.add("dragging");
+});
+
+app.addEventListener("dragover", (e) => {
+  if (!dragId) return;
+  const li = (e.target as HTMLElement).closest<HTMLElement>(".task");
+  if (!li || li.dataset.id === dragId) return;
+  e.preventDefault();
+  e.dataTransfer!.dropEffect = "move";
+  li.classList.add("drop-target");
+});
+
+app.addEventListener("dragleave", (e) => {
+  (e.target as HTMLElement).closest<HTMLElement>(".task")?.classList.remove("drop-target");
+});
+
+app.addEventListener("drop", (e) => {
+  const li = (e.target as HTMLElement).closest<HTMLElement>(".task");
+  if (!li || !dragId || li.dataset.id === dragId) return;
+  e.preventDefault();
+  reorderTasks(dragId, li.dataset.id ?? "");
+});
+
+app.addEventListener("dragend", () => {
+  dragId = null;
+  document.querySelectorAll(".task.dragging, .task.drop-target").forEach((el) => {
+    el.classList.remove("dragging", "drop-target");
+  });
 });

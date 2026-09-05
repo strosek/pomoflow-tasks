@@ -1,6 +1,6 @@
 # 0046 — Natural-language quick-add
 
-Status: proposed
+Status: done
 
 ## Goal
 

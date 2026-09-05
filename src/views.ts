@@ -119,8 +119,11 @@ function pageHeaderHtml(): string {
   return `
     <header class="app-header">
       <div class="app-title">
-        <h1>Pomoflow</h1>
-        <p class="tagline">Focus on one thing at a time.</p>
+        <button class="icon-btn about-btn" data-action="open-about" title="About Pomoflow" aria-label="About Pomoflow">${icon("info")}</button>
+        <div>
+          <h1>Pomoflow</h1>
+          <p class="tagline">Focus on one thing at a time.</p>
+        </div>
       </div>
       <nav class="header-actions">
         <button class="icon-btn" data-action="toggle-theme" title="Switch to ${targetLabel} mode" aria-label="Switch to ${targetLabel} mode" aria-pressed="${settings.theme === "night" ? "true" : "false"}">${icon(settings.theme === "night" ? "sun" : "moon")}</button>
@@ -182,6 +185,7 @@ function boardControlsHtml(): string {
           <option value="priority" ${sortBy === "priority" ? "selected" : ""}>Priority</option>
           <option value="type" ${sortBy === "type" ? "selected" : ""}>Type</option>
           <option value="newest" ${sortBy === "newest" ? "selected" : ""}>Newest</option>
+          <option value="manual" ${sortBy === "manual" ? "selected" : ""}>Manual</option>
         </select>
       </label>
     </div>`;
@@ -214,6 +218,11 @@ function sortedTasks(tasks: Task[]): Task[] {
         );
       case "newest":
         return b.createdAt - a.createdAt;
+      case "manual":
+        return (
+          (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER) ||
+          a.createdAt - b.createdAt
+        );
       case "priority":
       default:
         return a.priority - b.priority || a.createdAt - b.createdAt;
@@ -382,7 +391,8 @@ function renderBoard(): void {
         bits.push(`${t.pomodoroCount} pomodoro${t.pomodoroCount === 1 ? "" : "s"}`);
 
       return `
-      <li class="task ${task.quadrant} ${task.done ? "done" : ""} ${isOverdueOpen(task) ? "overdue" : ""}">
+      <li class="task ${task.quadrant} ${task.done ? "done" : ""} ${isOverdueOpen(task) ? "overdue" : ""}" data-id="${task.id}">
+        ${sortBy === "manual" && !task.done ? `<button class="icon-btn grip" data-grip title="Reorder" aria-label="Reorder ${escapeHtml(task.title)}">${icon("grip")}</button>` : ""}
         <button class="check" data-action="toggle" data-id="${task.id}" aria-label="Toggle done" aria-pressed="${task.done ? "true" : "false"}">${task.done ? "✓" : ""}</button>
         <div class="task-body">
           <span class="task-title">${escapeHtml(task.title)}${recurrenceBadgeHtml(task.recurrence)}${isOverdueOpen(task) ? `<span class="overdue-badge">overdue</span>` : ""}</span>

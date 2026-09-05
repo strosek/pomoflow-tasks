@@ -1,6 +1,6 @@
 # 0049 — PWA offline support
 
-Status: proposed
+Status: done
 
 ## Goal
 

@@ -34,7 +34,9 @@ import {
   buildExport,
   emptyState,
   loadBackup,
+  loadSnapshots,
   parseImport,
+  removeSnapshot,
   saveBackup,
   saveSettings,
 } from "./storage";
@@ -61,6 +63,106 @@ function stripTags(title: string): string {
     .replace(/#[\p{L}\p{N}_-]+/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+/* ------------------------------------------------------------------ */
+/* Natural-language quick-add (0046)                                   */
+/* ------------------------------------------------------------------ */
+
+const WEEKDAY_TO_DOW: Record<string, number> = {
+  sun: 0, sunday: 0,
+  mon: 1, monday: 1,
+  tue: 2, tues: 2, tuesday: 2,
+  wed: 3, wednesday: 3,
+  thu: 4, thur: 4, thurs: 4, thursday: 4,
+  fri: 5, friday: 5,
+  sat: 6, saturday: 6,
+};
+
+interface QuickParse {
+  clean: string;
+  priority?: number;
+  timeMin?: number;
+  dueDay?: number; // 0 = today, 1 = tomorrow, otherwise a JS weekday (0..6)
+}
+
+function parseQuickAdd(raw: string): QuickParse {
+  let clean = raw;
+  let priority: number | undefined;
+
+  const prio = clean.match(/(^|\s)[!p]([1-5])(?=\s|$)/i);
+  if (prio) {
+    priority = Number(prio[2]);
+    clean = clean.replace(prio[0], " ");
+  }
+
+  let timeMin: number | undefined;
+
+  let dueDay: number | undefined;
+  const word = clean.match(/(^|\s)(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)(?=\s|$)/i);
+  if (word) {
+    const w = word[2].toLowerCase();
+    if (w === "today") dueDay = 0;
+    else if (w === "tomorrow") dueDay = 1;
+    else dueDay = WEEKDAY_TO_DOW[w];
+    clean = clean.replace(word[0], " ");
+  }
+
+  // Only strip a time when a date word is present, so "Meet at 12:30" keeps its text.
+  if (dueDay !== undefined) {
+    const t24 = clean.match(/(^|\s)(\d{1,2}):(\d{2})(?=\s|$)/);
+    if (t24) {
+      timeMin = Number(t24[2]) * 60 + Number(t24[3]);
+      clean = clean.replace(t24[0], " ");
+    } else {
+      const t12 = clean.match(/(^|\s)(\d{1,2})\s*(am|pm)(?=\s|$)/i);
+      if (t12) {
+        let h = Number(t12[2]) % 12;
+        if (t12[3].toLowerCase() === "pm") h += 12;
+        timeMin = h * 60;
+        clean = clean.replace(t12[0], " ");
+      }
+    }
+  }
+
+  return { clean: clean.replace(/\s+/g, " ").trim(), priority, timeMin, dueDay };
+}
+
+function plannedForFrom(dueDay: number | undefined, timeMin: number | undefined): number | null {
+  if (dueDay === undefined) return null;
+  const now = new Date();
+  if (dueDay === 1) {
+    now.setDate(now.getDate() + 1);
+  } else if (dueDay > 1) {
+    const diff = dueDay - now.getDay();
+    now.setDate(now.getDate() + (diff <= 0 ? diff + 7 : diff));
+  }
+  return startOfLocalDay(now.getTime()) + (timeMin ?? 0) * 60_000;
+}
+
+function nextManualOrder(): number {
+  return state.tasks.reduce((max, t) => Math.max(max, t.order ?? 0), 0) + 1;
+}
+
+/* ------------------------------------------------------------------ */
+/* Undo toasts (0045)                                                  */
+/* ------------------------------------------------------------------ */
+
+function showUndoToast(message: string, onUndo: () => void): void {
+  document.querySelectorAll(".toast").forEach((t) => t.remove());
+  const toast = document.createElement("div");
+  toast.className = "toast";
+  toast.innerHTML = `
+    <span class="toast-text">${escapeHtml(message)}</span>
+    <button id="undo-action" class="primary">Undo</button>`;
+  document.body.appendChild(toast);
+  const dismiss = (): void => toast.remove();
+  toast.querySelector("#undo-action")!.addEventListener("click", (e) => {
+    e.stopPropagation();
+    onUndo();
+    dismiss();
+  });
+  window.setTimeout(dismiss, 6000);
 }
 
 const WEEKDAY_NAMES = [
@@ -115,25 +217,56 @@ export function addTask(): void {
 
   const rawTitle = titleInput.value.trim();
   if (!rawTitle) return;
-  const cleanTitle = stripTags(rawTitle);
 
-  state.tasks.push({
-    id: newId(),
-    title: cleanTitle || rawTitle,
-    priority: Number(priorityInput.value),
-    quadrant: quadrantInput.value as Quadrant,
-    done: false,
-    createdAt: Date.now(),
-    doneAt: null,
-    estimatedMin: null,
-    quick: quickInput?.checked ?? false,
-    tags: parseTags(rawTitle),
-    description: "",
-    plannedFor: null,
-    recurrence: null,
-  });
-  persist();
-  render();
+  const parsed = parseQuickAdd(rawTitle);
+  const cleanTitle = stripTags(parsed.clean || rawTitle) || rawTitle;
+  const priority = parsed.priority ?? Number(priorityInput.value);
+  const quadrant = quadrantInput.value as Quadrant;
+  const quick = quickInput?.checked ?? false;
+  const plannedFor = plannedForFrom(parsed.dueDay, parsed.timeMin);
+
+  const create = (): void => {
+    state.tasks.push({
+      id: newId(),
+      title: cleanTitle,
+      priority,
+      quadrant,
+      done: false,
+      createdAt: Date.now(),
+      doneAt: null,
+      estimatedMin: null,
+      quick,
+      tags: parseTags(rawTitle),
+      description: "",
+      plannedFor,
+      recurrence: null,
+      order: nextManualOrder(),
+    });
+    titleInput.value = "";
+    persist();
+    render();
+  };
+
+  // 0052: warn about duplicate open tasks.
+  const duplicate = state.tasks.find(
+    (t) => !t.done && t.title.trim().toLowerCase() === cleanTitle.toLowerCase(),
+  );
+  if (duplicate) {
+    const overlay = openDialog(`
+      <h3>Task already exists</h3>
+      <p class="dialog-text">"${escapeHtml(duplicate.title)}" is already open. Add it anyway?</p>
+      <div class="dialog-actions">
+        <button id="dup-cancel" class="ghost">Cancel</button>
+        <button id="dup-ok" class="primary">Add anyway</button>
+      </div>`);
+    overlay.querySelector("#dup-cancel")!.addEventListener("click", () => overlay.remove());
+    overlay.querySelector("#dup-ok")!.addEventListener("click", () => {
+      overlay.remove();
+      create();
+    });
+    return;
+  }
+  create();
 }
 
 function toggleTask(id: string): void {
@@ -141,13 +274,33 @@ function toggleTask(id: string): void {
   if (!task) return;
   // 0043: completing a recurring task immediately reopens it for its next occurrence.
   if (!task.done && task.recurrence) {
+    const prev = task.plannedFor;
     task.plannedFor = nextDueDate(task.recurrence, Date.now());
     persist();
     render();
+    showUndoToast("Task rescheduled for its next occurrence", () => {
+      task.plannedFor = prev;
+      persist();
+      render();
+    });
     return;
   }
-  task.done = !task.done;
-  task.doneAt = task.done ? Date.now() : null;
+  if (!task.done) {
+    task.done = true;
+    task.doneAt = Date.now();
+    persist();
+    render();
+    announce("Task completed");
+    showUndoToast("Task completed", () => {
+      task.done = false;
+      task.doneAt = null;
+      persist();
+      render();
+    });
+    return;
+  }
+  task.done = false;
+  task.doneAt = null;
   persist();
   render();
 }
@@ -160,12 +313,40 @@ function toggleQuick(id: string): void {
   render();
 }
 
+/** 0048: reorder open tasks in manual mode when one is dragged over another. */
+export function reorderTasks(draggedId: string, overId: string): void {
+  if (draggedId === overId) return;
+  const open = state.tasks
+    .filter((t) => !t.done)
+    .sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER) || a.createdAt - b.createdAt);
+  const ids = open.map((t) => t.id);
+  const from = ids.indexOf(draggedId);
+  const to = ids.indexOf(overId);
+  if (from < 0 || to < 0) return;
+  ids.splice(from, 1);
+  ids.splice(to, 0, draggedId);
+  for (const [i, id] of ids.entries()) {
+    const t = state.tasks.find((x) => x.id === id);
+    if (t) t.order = i + 1;
+  }
+  persist();
+  render();
+}
+
 function toggleToday(id: string): void {
   const task = taskById(id);
   if (!task) return;
+  const prev = task.plannedFor;
   task.plannedFor = isTodayOpen(task) ? null : todayStart();
   persist();
   render();
+  if (task.plannedFor !== prev) {
+    showUndoToast("Plan updated", () => {
+      task.plannedFor = prev;
+      persist();
+      render();
+    });
+  }
 }
 
 function openDeferDialog(id: string): void {
@@ -192,13 +373,22 @@ function openDeferDialog(id: string): void {
 
   overlay.querySelector("#defer-cancel")!.addEventListener("click", () => overlay.remove());
   overlay.querySelector("#defer-clear")!.addEventListener("click", () => {
+    const prev = task.plannedFor;
     task.plannedFor = null;
     persist();
     overlay.remove();
     render();
+    if (prev !== null) {
+      showUndoToast("Plan cleared", () => {
+        task.plannedFor = prev;
+        persist();
+        render();
+      });
+    }
   });
   overlay.querySelector("#defer-ok")!.addEventListener("click", () => {
     const value = overlay.querySelector<HTMLInputElement>("#defer-date")?.value;
+    const prev = task.plannedFor;
     if (value) {
       const [y, m, d] = value.split("-").map(Number);
       const date = new Date(y, (m ?? 1) - 1, d ?? 1);
@@ -207,6 +397,13 @@ function openDeferDialog(id: string): void {
     persist();
     overlay.remove();
     render();
+    if (task.plannedFor !== prev) {
+      showUndoToast("Task deferred", () => {
+        task.plannedFor = prev;
+        persist();
+        render();
+      });
+    }
   });
 }
 
@@ -317,9 +514,10 @@ function openRecurrenceDialog(id: string): void {
 function confirmDeleteTask(id: string): void {
   const task = taskById(id);
   if (!task) return;
+  const sessionCount = doneSessions(state).filter((s) => s.taskId === id).length;
   const overlay = openDialog(`
     <h3>Delete task?</h3>
-    <p class="dialog-text">${escapeHtml(task.title)}. Session history for this task is kept but will be shown as "deleted task".</p>
+    <p class="dialog-text">${escapeHtml(task.title)}${sessionCount > 0 ? ` has ${sessionCount} session${sessionCount === 1 ? "" : "s"} in history.` : ""} Session history is kept but will be shown as "deleted task".</p>
     <div class="dialog-actions">
       <button id="del-task-cancel" class="ghost">Cancel</button>
       <button id="del-task-ok" class="danger-btn">Delete</button>
@@ -332,9 +530,17 @@ function confirmDeleteTask(id: string): void {
 }
 
 function deleteTask(id: string): void {
-  state.tasks = state.tasks.filter((t) => t.id !== id);
+  const index = state.tasks.findIndex((t) => t.id === id);
+  const task = state.tasks[index];
+  if (!task) return;
+  state.tasks.splice(index, 1);
   persist();
   render();
+  showUndoToast("Task deleted", () => {
+    state.tasks.splice(Math.min(index, state.tasks.length), 0, task);
+    persist();
+    render();
+  });
 }
 
 function confirmDeleteSession(sessionId: string): void {
@@ -520,11 +726,49 @@ function openEditTask(id: string): void {
 /* Settings / data management                                          */
 /* ------------------------------------------------------------------ */
 
+const ISSUES_URL = "https://github.com/strosek/pomoflow-tasks/issues";
+
 function toggleTheme(): void {
   settings.theme = settings.theme === "night" ? "day" : "night";
   saveSettings(settings);
   applyTheme(settings.theme);
   render();
+}
+
+function openAboutModal(): void {
+  const overlay = openDialog(`
+    <h3>About Pomoflow</h3>
+    <div class="about">
+      <p><strong>One thing at a time.</strong> Pomoflow is a calm, free, browser-only task
+      tracker. No account, no server, no tracking — your data lives in your browser.</p>
+      <h4>Philosophy</h4>
+      <p>Built for people who like <strong>Flowtime</strong> (deep, open-ended focus) and
+      <strong>Pomodoro</strong> (steady progress). Prioritize what's urgent and important, keep
+      the noise down, and let today's focus be a single reassuring number.</p>
+      <h4>Get started</h4>
+      <ul>
+        <li>Add a task, pick a priority (1–5) and a quadrant (urgent / important).</li>
+        <li>Mark recurring routines (<em>daily</em>, <em>work days</em>, <em>weekly</em>,
+          <em>monthly</em>) with the repeat menu on each task.</li>
+        <li>Hit <strong>play</strong> on a task to start a Pomodoro or Flowtime session; finish
+          to record it and take a break.</li>
+        <li>Use tags (<code>#work</code>) and the search box to find things fast.</li>
+        <li>Your history and focus dashboard show where your time actually went.</li>
+      </ul>
+      <h4>Keyboard shortcuts</h4>
+      <ul class="shortcuts-list">
+        <li><strong>N</strong> new task</li>
+        <li><strong>/</strong> search</li>
+        <li><strong>Space</strong> pause/resume</li>
+        <li><strong>F</strong> finish</li>
+        <li><strong>Esc</strong> close / exit</li>
+      </ul>
+    </div>
+    <div class="dialog-actions">
+      <a class="ghost about-link" href="${ISSUES_URL}" target="_blank" rel="noopener noreferrer">Feedback</a>
+      <button id="about-ok" class="primary">Got it</button>
+    </div>`);
+  overlay.querySelector("#about-ok")!.addEventListener("click", () => overlay.remove());
 }
 
 function openSettings(): void {
@@ -590,7 +834,10 @@ function openSettings(): void {
         <button type="button" id="btn-export" class="ghost">Export data</button>
         <button type="button" id="btn-export-md" class="ghost">Export history (Markdown)</button>
         <button type="button" id="btn-import" class="ghost">Import data</button>
+        <button type="button" id="btn-import-csv" class="ghost">Import CSV</button>
         <button type="button" id="btn-restore" class="ghost">Restore last backup</button>
+        <button type="button" id="btn-snapshots" class="ghost">Restore snapshot…</button>
+        <a class="ghost" href="${ISSUES_URL}" target="_blank" rel="noopener noreferrer">Feedback</a>
       </div>
 
       <h4 class="dialog-section danger">Danger zone</h4>
@@ -609,7 +856,9 @@ function openSettings(): void {
   const exportBtn = overlay.querySelector<HTMLButtonElement>("#btn-export")!;
   const exportMdBtn = overlay.querySelector<HTMLButtonElement>("#btn-export-md")!;
   const importBtn = overlay.querySelector<HTMLButtonElement>("#btn-import")!;
+  const importCsvBtn = overlay.querySelector<HTMLButtonElement>("#btn-import-csv")!;
   const restoreBtn = overlay.querySelector<HTMLButtonElement>("#btn-restore")!;
+  const snapshotsBtn = overlay.querySelector<HTMLButtonElement>("#btn-snapshots")!;
   const clearBtn = overlay.querySelector<HTMLButtonElement>("#btn-clear")!;
   const previewBtn = overlay.querySelector<HTMLButtonElement>("#btn-preview-sound")!;
 
@@ -718,6 +967,10 @@ function openSettings(): void {
     input.click();
   });
 
+  importCsvBtn.addEventListener("click", () => {
+    openCsvImport();
+  });
+
   restoreBtn.addEventListener("click", () => {
     const backup = loadBackup();
     if (!backup) {
@@ -745,10 +998,60 @@ function openSettings(): void {
     });
   });
 
+  snapshotsBtn.addEventListener("click", () => {
+    const snapshots = loadSnapshots();
+    if (!snapshots.length) {
+      showMessage("No snapshots", "There are no daily snapshots to restore yet.");
+      return;
+    }
+    const rows = snapshots
+      .map(
+        (s, i) => `
+        <button class="ghost snapshot-row" data-snap="${i}">
+          ${escapeHtml(s.day)} · ${s.backup.data.tasks.length} task(s), ${s.backup.data.sessions.length} session(s)
+        </button>`,
+      )
+      .join("");
+    const picker = openDialog(`
+      <h3>Restore a snapshot</h3>
+      <div class="snapshot-list">${rows}</div>
+      <div class="dialog-actions">
+        <button id="snap-cancel" class="ghost">Cancel</button>
+      </div>`);
+    picker.querySelector("#snap-cancel")!.addEventListener("click", () => picker.remove());
+    picker.querySelectorAll<HTMLButtonElement>("[data-snap]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const snap = snapshots[Number(btn.dataset.snap)];
+        picker.remove();
+        const confirm = openDialog(`
+          <h3>Restore ${escapeHtml(snap.day)}?</h3>
+          <p class="dialog-text">Replace current data with this snapshot (${snap.backup.data.tasks.length} tasks, ${snap.backup.data.sessions.length} sessions)?</p>
+          <div class="dialog-actions">
+            <button id="snaprestore-cancel" class="ghost">Cancel</button>
+            <button id="snaprestore-ok" class="primary">Restore</button>
+          </div>`);
+        confirm.querySelector("#snaprestore-cancel")!.addEventListener("click", () => confirm.remove());
+        confirm.querySelector("#snaprestore-ok")!.addEventListener("click", () => {
+          saveBackup(settings, state);
+          setState(snap.backup.data);
+          setSettings(snap.backup.settings);
+          persist();
+          saveSettings(settings);
+          applyTheme(settings.theme);
+          resetTransientState();
+          removeSnapshot(snap.key);
+          confirm.remove();
+          overlay.remove();
+          render();
+        });
+      });
+    });
+  });
+
   clearBtn.addEventListener("click", () => {
     const confirm = openDialog(`
       <h3>Clear all data?</h3>
-      <p class="dialog-text">A backup will be saved first. This deletes all tasks, sessions, and notes. It cannot be undone. Settings are kept.</p>
+      <p class="dialog-text">A backup will be saved first. This deletes ${state.tasks.length} task(s), ${state.sessions.length} session(s), and all notes. It cannot be undone. Settings are kept.</p>
       <div class="dialog-actions">
         <button id="clear-cancel" class="ghost">Cancel</button>
         <button id="clear-ok" class="danger-btn">Delete everything</button>
@@ -791,6 +1094,179 @@ function confirmImport(
   });
 }
 
+/* ------------------------------------------------------------------ */
+/* CSV import (0048)                                                   */
+/* ------------------------------------------------------------------ */
+
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let inQuotes = false;
+  const s = text.replace(/^\uFEFF/, "");
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (s[i + 1] === '"') {
+          cell += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        cell += ch;
+      }
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === ",") {
+      row.push(cell);
+      cell = "";
+    } else if (ch === "\n") {
+      row.push(cell);
+      cell = "";
+      if (row.some((c) => c.trim() !== "")) rows.push(row);
+      row = [];
+    } else if (ch !== "\r") {
+      cell += ch;
+    }
+  }
+  row.push(cell);
+  if (row.some((c) => c.trim() !== "")) rows.push(row);
+  return rows;
+}
+
+interface CsvTaskStub {
+  title: string;
+  priority: number;
+  quadrant: Quadrant;
+  tags: string[];
+  done: boolean;
+  estimatedMin: number | null;
+}
+
+const QUADRANT_BY_NUMBER: Record<string, Quadrant> = {
+  "1": "q1", "2": "q2", "3": "q3", "4": "q4",
+};
+
+function parseQuadrant(value: string): Quadrant {
+  const v = value.trim().toLowerCase();
+  if (v === "q1" || v === "q2" || v === "q3" || v === "q4") return v;
+  return QUADRANT_BY_NUMBER[v] ?? "q2";
+}
+
+function parseCsvTasks(rows: string[][]): { tasks: CsvTaskStub[]; skipped: number } {
+  if (!rows.length) return { tasks: [], skipped: 0 };
+  const header = rows[0].map((h) => h.trim().toLowerCase());
+  const idx = (names: string[]): number => {
+    for (const n of names) {
+      const i = header.indexOf(n);
+      if (i >= 0) return i;
+    }
+    return -1;
+  };
+  const titleIdx = idx(["title", "content"]);
+  if (titleIdx < 0) return { tasks: [], skipped: rows.length };
+
+  const priorityIdx = idx(["priority"]);
+  const quadrantIdx = idx(["quadrant", "type"]);
+  const tagsIdx = idx(["tags", "labels"]);
+  const doneIdx = idx(["done", "completed"]);
+  const estIdx = idx(["estimated_min", "estimate"]);
+
+  const isTodoist = header.includes("type") && header.includes("content");
+
+  const tasks: CsvTaskStub[] = [];
+  let skipped = 0;
+  for (const row of rows.slice(1)) {
+    const title = (row[titleIdx] ?? "").trim();
+    if (!title) {
+      skipped++;
+      continue;
+    }
+    const priorityRaw = (row[priorityIdx] ?? "").trim();
+    const priority =
+      priorityRaw === "" ? 3 : Math.min(5, Math.max(1, Number(priorityRaw) || 3));
+    const tags = (row[tagsIdx] ?? "")
+      .split(/[,\s]+/)
+      .map((t) => t.trim().replace(/^#/, "").toLowerCase())
+      .filter(Boolean);
+    const doneRaw = (row[doneIdx] ?? "").trim().toLowerCase();
+    const done = doneRaw === "true" || doneRaw === "1" || doneRaw === "yes" || doneRaw === "done";
+    const estRaw = (row[estIdx] ?? "").trim();
+    const estimatedMin = estRaw === "" ? null : Math.round(Number(estRaw) || 0) || null;
+
+    let quadrant: Quadrant;
+    if (isTodoist) {
+      // Todoist priority: 1 (highest) .. 4 (lowest); Pomoflow quadrant defaults to q2.
+      quadrant = "q2";
+    } else {
+      quadrant = quadrantIdx >= 0 ? parseQuadrant(row[quadrantIdx] ?? "") : "q2";
+    }
+
+    tasks.push({ title, priority, quadrant, tags, done, estimatedMin });
+  }
+  return { tasks, skipped };
+}
+
+function openCsvImport(): void {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = ".csv,text/csv";
+  input.addEventListener("change", () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const rows = parseCsv(String(reader.result ?? ""));
+      const { tasks, skipped } = parseCsvTasks(rows);
+      if (!tasks.length) {
+        showImportError("No tasks could be parsed from this CSV. Expect a column named 'title' or 'content'.");
+        return;
+      }
+      const preview = tasks
+        .slice(0, 10)
+        .map((t) => `<li class="csv-preview-row"><span class="task-title">${escapeHtml(t.title)}</span>${t.done ? "<span class=\"csv-done\">done</span>" : ""}</li>`)
+        .join("");
+      const more = tasks.length > 10 ? `<li class="csv-preview-row csv-more">… and ${tasks.length - 10} more</li>` : "";
+      const overlay = openDialog(`
+        <h3>Import ${tasks.length} task(s) from CSV?</h3>
+        ${skipped ? `<p class="dialog-text">${skipped} row(s) skipped (empty or unrecognized).</p>` : ""}
+        <ul class="csv-preview">${preview}${more}</ul>
+        <div class="dialog-actions">
+          <button id="csv-cancel" class="ghost">Cancel</button>
+          <button id="csv-ok" class="primary">Import</button>
+        </div>`);
+      overlay.querySelector("#csv-cancel")!.addEventListener("click", () => overlay.remove());
+      overlay.querySelector("#csv-ok")!.addEventListener("click", () => {
+        for (const t of tasks) {
+          state.tasks.push({
+            id: newId(),
+            title: t.title,
+            priority: t.priority,
+            quadrant: t.quadrant,
+            done: t.done,
+            createdAt: Date.now(),
+            doneAt: t.done ? Date.now() : null,
+            estimatedMin: t.estimatedMin,
+            quick: false,
+            tags: t.tags,
+            description: "",
+            plannedFor: null,
+            recurrence: null,
+            order: nextManualOrder(),
+          });
+        }
+        persist();
+        overlay.remove();
+        render();
+      });
+    };
+    reader.readAsText(file);
+  });
+  input.click();
+}
+
 function resetTransientState(): void {
   setSubView(null);
   setFocusMode(false);
@@ -811,6 +1287,9 @@ function clearAllData(): void {
   setState(emptyState());
   resetTransientState();
   persist();
+  if ("caches" in window) {
+    caches.keys().then((keys) => keys.forEach((k) => caches.delete(k)));
+  }
   render();
 }
 
@@ -1331,6 +1810,9 @@ export function handleAction(action: string | undefined, id: string | undefined)
       break;
     case "open-settings":
       openSettings();
+      break;
+    case "open-about":
+      openAboutModal();
       break;
     case "toggle-focus":
       setFocusMode(!focusMode);

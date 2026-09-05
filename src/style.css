@@ -133,6 +133,47 @@ h1 {
   flex-wrap: wrap;
 }
 
+.app-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.about-btn {
+  flex: none;
+}
+
+/* About modal (0044) */
+
+.about h4 {
+  margin: 14px 0 6px;
+  font-size: var(--text-xs);
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.about p,
+.about li {
+  color: var(--text-dim);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+
+.about ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+.shortcuts-list {
+  list-style: none;
+  padding-left: 0;
+}
+
+.shortcuts-list li {
+  padding: 2px 0;
+}
+
 /* Board */
 
 .toolbar {
@@ -247,6 +288,26 @@ button.ghost:hover {
   border-color: var(--text-faint);
 }
 
+a.ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 9px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  text-decoration: none;
+  background: transparent;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+a.ghost:hover {
+  color: var(--text);
+  border-color: var(--text-faint);
+}
+
 .empty {
   text-align: center;
   color: var(--text-faint);
@@ -281,6 +342,23 @@ button.ghost:hover {
 
 .task:hover {
   background: var(--surface-2);
+}
+
+.grip {
+  cursor: grab;
+  touch-action: none;
+}
+
+.grip:active {
+  cursor: grabbing;
+}
+
+.task.dragging {
+  opacity: 0.4;
+}
+
+.task.drop-target {
+  box-shadow: inset 0 3px 0 var(--accent-bright);
 }
 
 .task.done {
@@ -811,6 +889,58 @@ button:focus-visible {
 
 .toast-text strong {
   color: var(--text);
+}
+
+/* CSV import preview (0048) */
+
+.csv-preview {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.csv-preview-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: var(--text-sm);
+  color: var(--text-dim);
+}
+
+.csv-preview-row .task-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.csv-done {
+  font-size: var(--text-xs);
+  color: var(--moss);
+  flex: none;
+}
+
+.csv-more {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+/* Snapshot restore (0053) */
+
+.snapshot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.snapshot-row {
+  text-align: left;
 }
 
 /* Board filter/sort controls (0015, 0017) */

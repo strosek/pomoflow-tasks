@@ -1,6 +1,6 @@
 # 0048 — CSV / Todoist import
 
-Status: proposed
+Status: done
 
 ## Goal
 

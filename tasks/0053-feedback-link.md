@@ -1,6 +1,6 @@
 # 0053 — Feedback link
 
-Status: proposed
+Status: done
 
 ## Goal
 

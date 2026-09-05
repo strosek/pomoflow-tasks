@@ -1,6 +1,6 @@
 # 0050 — Accessibility pass
 
-Status: proposed
+Status: done
 
 ## Goal
 

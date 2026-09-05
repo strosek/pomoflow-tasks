@@ -30,7 +30,7 @@ export let quickRun: QuickRun | null = null;
 /** 0015/0017/0028: board filter/sort/search state (view-only). */
 export let filterPriority: number | null = null;
 export let filterQuadrant: Quadrant | null = null;
-export let sortBy: "priority" | "type" | "newest" = "priority";
+export let sortBy: "priority" | "type" | "newest" | "manual" = "priority";
 export let searchQuery = "";
 
 /** 0037: which task row has its "⋯" menu open. */

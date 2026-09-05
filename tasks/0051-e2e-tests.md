@@ -1,6 +1,6 @@
 # 0051 — E2E tests (Playwright)
 
-Status: proposed
+Status: done
 
 ## Goal
 

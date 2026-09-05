@@ -1,6 +1,6 @@
 # 0044 — About / help modal
 
-Status: proposed
+Status: done
 
 ## Goal
 

@@ -62,6 +62,7 @@ function task(overrides: Partial<Task> = {}): Task {
     description: "",
     plannedFor: null,
     recurrence: null,
+    order: 0,
     ...overrides,
   };
 }

@@ -1,6 +1,6 @@
 # 0045 — Undo toasts for task actions
 
-Status: proposed
+Status: done
 
 ## Goal
 

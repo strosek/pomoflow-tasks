@@ -5,11 +5,14 @@ import {
   emptyState,
   loadBackup,
   loadSettings,
+  loadSnapshots,
   loadState,
   parseImport,
+  removeSnapshot,
   sanitizeSettings,
   sanitizeState,
   saveBackup,
+  saveDailySnapshot,
   saveSettings,
   saveState,
 } from "./storage";
@@ -85,6 +88,7 @@ describe("sanitizeState", () => {
           description: "",
           plannedFor: null,
           recurrence: null,
+          order: 0,
         },
       ],
       sessions: [
@@ -244,6 +248,7 @@ describe("persistence", () => {
           description: "",
           plannedFor: null,
           recurrence: null,
+          order: 0,
         },
       ],
     };
@@ -266,5 +271,40 @@ describe("persistence", () => {
     saveBackup(VALID_SETTINGS, state);
     expect(loadBackup()).toEqual({ settings: VALID_SETTINGS, data: state });
     expect(loadBackup()).not.toBeNull();
+  });
+
+  it("saves daily snapshots once per day and prunes old ones", () => {
+    const state = emptyState();
+    saveDailySnapshot(VALID_SETTINGS, state);
+    expect(loadSnapshots()).toHaveLength(1);
+    // Same-day second call is a no-op.
+    saveDailySnapshot(VALID_SETTINGS, state);
+    expect(loadSnapshots()).toHaveLength(1);
+  });
+
+  it("restores and removes a snapshot", () => {
+    const state = emptyState();
+    state.tasks.push({
+      id: "t1",
+      title: "Snap",
+      priority: 2,
+      quadrant: "q1",
+      done: false,
+      createdAt: 1,
+      doneAt: null,
+      estimatedMin: null,
+      quick: false,
+      tags: [],
+      description: "",
+      plannedFor: null,
+      recurrence: null,
+      order: 0,
+    });
+    saveDailySnapshot(VALID_SETTINGS, state);
+    const [entry] = loadSnapshots();
+    expect(entry.backup.data.tasks).toHaveLength(1);
+    expect(entry.backup.data.tasks[0].title).toBe("Snap");
+    removeSnapshot(entry.key);
+    expect(loadSnapshots()).toHaveLength(0);
   });
 });

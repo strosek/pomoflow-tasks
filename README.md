@@ -30,7 +30,10 @@ peace of mind to feature creep. It is designed to be:
 - Plan for today or defer to a later date; overdue is surfaced clearly
 - Quick tasks for the tiny stuff, batched into one continuous run
 - Recurring tasks (daily, work days, weekly, or monthly) with a scheduled time that reopen after completion
+- Natural-language quick-add (`#tags`, `!priority`, "tomorrow 9am")
+- Manual drag-and-drop ordering alongside priority/type/newest sort
 - Search, filter, and sort
+- Undo toasts for completing, deleting, and rescheduling tasks
 
 ### Focus, your way
 
@@ -53,8 +56,10 @@ peace of mind to feature creep. It is designed to be:
 ### Data you own
 
 - 100% local — stored in your browser, no account, no server
-- Export / import (JSON) and Markdown history export
-- Automatic backup before destructive actions, with restore
+- Installable PWA that works offline
+- Export / import (JSON), CSV import (e.g. from Todoist), and Markdown history export
+- Automatic backup before destructive actions, with restore, plus daily snapshots
+- Duplicate-task warnings and delete confirmations with session counts
 
 ## Getting started
 

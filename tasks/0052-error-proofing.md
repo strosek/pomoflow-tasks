@@ -1,6 +1,6 @@
 # 0052 — Error-proofing & data safety
 
-Status: proposed
+Status: done
 
 ## Goal
 

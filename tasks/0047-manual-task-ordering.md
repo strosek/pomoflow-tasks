@@ -1,6 +1,6 @@
 # 0047 — Manual task ordering
 
-Status: proposed
+Status: done
 
 ## Goal
 

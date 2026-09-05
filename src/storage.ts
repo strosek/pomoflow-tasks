@@ -177,6 +177,7 @@ function sanitizeTask(raw: unknown): Task {
     description: str(t.description),
     plannedFor: typeof t.plannedFor === "number" ? t.plannedFor : null,
     recurrence: sanitizeRecurrence(t.recurrence),
+    order: clampNum(t.order, 0, Number.MAX_SAFE_INTEGER, 0),
   };
 }
 
@@ -310,4 +311,83 @@ export function loadBackup(): BackupData | null {
   } catch {
     return null;
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Daily snapshot backups (0053)                                       */
+/* ------------------------------------------------------------------ */
+
+export const SNAPSHOT_PREFIX = "pomoflow:snapshot:";
+const SNAPSHOT_MAX = 3;
+
+function snapshotKey(day: string): string {
+  return `${SNAPSHOT_PREFIX}${day}`;
+}
+
+/** Save a daily snapshot (no-op if one already exists for today), pruning old ones. */
+export function saveDailySnapshot(settings: Settings, state: AppState): void {
+  try {
+    const day = ymdForDay(Date.now());
+    const key = snapshotKey(day);
+    if (localStorage.getItem(key)) return;
+    localStorage.setItem(key, JSON.stringify({ settings, data: state } satisfies BackupData));
+
+    const keys = Object.keys(localStorage)
+      .filter((k) => k.startsWith(SNAPSHOT_PREFIX))
+      .sort();
+    while (keys.length > SNAPSHOT_MAX) {
+      localStorage.removeItem(keys.shift()!);
+    }
+  } catch (err) {
+    console.error("Failed to save daily snapshot.", err);
+  }
+}
+
+export interface SnapshotEntry {
+  key: string;
+  day: string;
+  backup: BackupData;
+}
+
+export function loadSnapshots(): SnapshotEntry[] {
+  const out: SnapshotEntry[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!key || !key.startsWith(SNAPSHOT_PREFIX)) continue;
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw) as Partial<BackupData>;
+      const d = parsed.data;
+      if (!d || !Array.isArray(d.tasks) || !Array.isArray(d.sessions) || !Array.isArray(d.notes)) {
+        continue;
+      }
+      out.push({
+        key,
+        day: key.slice(SNAPSHOT_PREFIX.length),
+        backup: {
+          settings: sanitizeSettings(parsed.settings),
+          data: sanitizeState(d),
+        },
+      });
+    } catch {
+      // skip corrupt snapshot
+    }
+  }
+  return out.sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0));
+}
+
+export function removeSnapshot(key: string): void {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // ignore
+  }
+}
+
+function ymdForDay(ms: number): string {
+  const d = new Date(ms);
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${mm}-${dd}`;
 }
