@@ -48,6 +48,11 @@ import { QUADRANT_LABEL } from "./types";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
 
+/** Subtle donation link shown in the footer. */
+function koFiHtml(): string {
+  return `<a class="ko-fi" href="https://ko-fi.com/edcorona" target="_blank" rel="noopener noreferrer" title="Support Pomoflow on Ko-fi">☕ Support on Ko-fi</a>`;
+}
+
 /** Keep the browser tab title useful during a session (countdown / elapsed). */
 export function updateDocumentTitle(clockText: string | null): void {
   document.title = clockText ? `${clockText} · Pomoflow` : "Pomoflow";
@@ -494,7 +499,7 @@ function renderBoard(): void {
 
     ${planListHtml("Later", laterOpen, "deferred")}
     ${quickSection}
-    <p class="shortcut-hint">N new task · / search · Space pause/resume · F finish · Esc close</p>`;
+    <p class="shortcut-hint">N new task · / search · Space pause/resume · F finish · Esc close ${koFiHtml()}</p>`;
 }
 
 function renderHistory(taskId: string | null): void {
@@ -863,7 +868,7 @@ function renderSession(session: Session): void {
         }
       </section>
     </main>
-    <p class="shortcut-hint">Space pause/resume · F finish · Esc close</p>`;
+    <p class="shortcut-hint">Space pause/resume · F finish · Esc close ${koFiHtml()}</p>`;
 }
 
 function renderBreak(): void {
@@ -898,7 +903,7 @@ function renderBreak(): void {
         <button class="icon-btn" data-action="skip-break" title="Skip break" aria-label="Skip break">${icon("skip")}</button>
       </div>
     </main>
-    <p class="shortcut-hint">F start focusing</p>`;
+    <p class="shortcut-hint">F start focusing ${koFiHtml()}</p>`;
 }
 
 function renderQuickRun(): void {
@@ -919,5 +924,5 @@ function renderQuickRun(): void {
         <button class="ghost" data-action="quick-finish">Finish run</button>
       </div>
     </main>
-    <p class="shortcut-hint">F finish run</p>`;
+    <p class="shortcut-hint">F finish run ${koFiHtml()}</p>`;
 }
