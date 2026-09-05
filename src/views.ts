@@ -499,7 +499,7 @@ function renderBoard(): void {
 
     ${planListHtml("Later", laterOpen, "deferred")}
     ${quickSection}
-    <p class="shortcut-hint">N new task · / search · Space pause/resume · F finish · Esc close ${koFiHtml()}</p>`;
+    <p class="shortcut-hint"><span class="hint-text"><strong>N</strong> new task · <strong>/</strong> search · <strong>Space</strong> pause/resume · <strong>F</strong> finish · <strong>Esc</strong> close</span>${koFiHtml()}</p>`;
 }
 
 function renderHistory(taskId: string | null): void {
@@ -832,12 +832,12 @@ function renderSession(session: Session): void {
   const notes = notesFor(session.id);
 
   app.innerHTML = `
-    <header class="session-header">
-      <h2 class="session-task-title">${title}</h2>
-      <span class="session-phase">${phaseLabel(snap.phase)} · ${techniqueLabel(session.technique)}</span>
-    </header>
-
     <main class="session-main">
+      <header class="session-header">
+        <h2 class="session-task-title">${title}</h2>
+        <span class="session-phase">${phaseLabel(snap.phase)} · ${techniqueLabel(session.technique)}</span>
+      </header>
+
       ${descBlock}
       ${hintBlock}
       <div class="clock">${clockText}</div>
@@ -868,7 +868,7 @@ function renderSession(session: Session): void {
         }
       </section>
     </main>
-    <p class="shortcut-hint">Space pause/resume · F finish · Esc close ${koFiHtml()}</p>`;
+    <p class="shortcut-hint"><span class="hint-text"><strong>Space</strong> pause/resume · <strong>F</strong> finish · <strong>Esc</strong> close</span>${koFiHtml()}</p>`;
 }
 
 function renderBreak(): void {
@@ -903,7 +903,7 @@ function renderBreak(): void {
         <button class="icon-btn" data-action="skip-break" title="Skip break" aria-label="Skip break">${icon("skip")}</button>
       </div>
     </main>
-    <p class="shortcut-hint">F start focusing ${koFiHtml()}</p>`;
+    <p class="shortcut-hint"><span class="hint-text"><strong>F</strong> start focusing</span>${koFiHtml()}</p>`;
 }
 
 function renderQuickRun(): void {
@@ -924,5 +924,5 @@ function renderQuickRun(): void {
         <button class="ghost" data-action="quick-finish">Finish run</button>
       </div>
     </main>
-    <p class="shortcut-hint">F finish run ${koFiHtml()}</p>`;
+    <p class="shortcut-hint"><span class="hint-text"><strong>F</strong> finish run</span>${koFiHtml()}</p>`;
 }
