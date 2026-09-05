@@ -71,6 +71,7 @@ export function addTask(): void {
   const titleInput = document.querySelector<HTMLInputElement>("#task-title");
   const priorityInput = document.querySelector<HTMLSelectElement>("#task-priority");
   const quadrantInput = document.querySelector<HTMLSelectElement>("#task-quadrant");
+  const quickInput = document.querySelector<HTMLInputElement>("#task-quick");
   if (!titleInput || !priorityInput || !quadrantInput) return;
 
   const rawTitle = titleInput.value.trim();
@@ -86,7 +87,7 @@ export function addTask(): void {
     createdAt: Date.now(),
     doneAt: null,
     estimatedMin: null,
-    quick: false,
+    quick: quickInput?.checked ?? false,
     tags: parseTags(rawTitle),
     description: "",
     plannedFor: null,

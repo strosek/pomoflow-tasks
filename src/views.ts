@@ -232,13 +232,8 @@ const PRIORITY_COLORS = [
   "var(--text-faint)",
 ];
 
-function priorityDotsHtml(priority: number): string {
-  let out = "";
-  for (let i = 1; i <= 5; i++) {
-    const filled = i <= priority;
-    out += `<span class="pdot ${filled ? "on" : ""}"${filled ? ` style="background:${PRIORITY_COLORS[priority]}"` : ""}></span>`;
-  }
-  return out;
+function priorityLabel(priority: number): string {
+  return `<span class="priority-pill" style="color:${PRIORITY_COLORS[priority]}" title="Priority ${priority} of 5" aria-label="Priority ${priority} of 5">P${priority}</span>`;
 }
 
 /** Horizontal proportion bars (label + track + value). */
@@ -319,20 +314,20 @@ function renderBoard(): void {
           <span class="task-title">${escapeHtml(task.title)}${isOverdueOpen(task) ? `<span class="overdue-badge">overdue</span>` : ""}</span>
           <span class="task-meta">
             <span class="quadrant ${task.quadrant}">${QUADRANT_LABEL[task.quadrant]}</span>
-            <span class="priority-dots" title="Priority ${task.priority} of 5" aria-label="Priority ${task.priority} of 5">${priorityDotsHtml(task.priority)}</span>
+            ${priorityLabel(task.priority)}
+            ${
+              (task.tags ?? []).length
+                ? `<span class="tag-chips">${(task.tags ?? [])
+                    .map((tag) => `<span class="tag-chip">#${escapeHtml(tag)}</span>`)
+                    .join("")}</span>`
+                : ""
+            }
             ${
               settings.showEstimates
                 ? `<input type="number" class="est-input" data-estimate="${task.id}" value="${task.estimatedMin ?? ""}" min="0" placeholder="est" aria-label="Estimated minutes" />`
                 : ""
             }
           </span>
-          ${
-            (task.tags ?? []).length
-              ? `<span class="tag-chips">${(task.tags ?? [])
-                  .map((tag) => `<span class="tag-chip">#${escapeHtml(tag)}</span>`)
-                  .join("")}</span>`
-              : ""
-          }
         </div>
         ${bits.length ? `<span class="task-stats">${bits.join(" · ")}</span>` : ""}
         <div class="task-actions">
@@ -391,7 +386,6 @@ function renderBoard(): void {
     ${pageHeaderHtml()}
     <div class="toolbar">
       ${summaryBarHtml()}
-      ${boardControlsHtml()}
     </div>
     <section class="add-task">
       <input id="task-title" type="text" placeholder="What do you need to do? #tag" autocomplete="off" />
@@ -413,9 +407,14 @@ function renderBoard(): void {
             <option value="q4">Not urgent · Not important</option>
           </select>
         </label>
+        <label class="check-field">Quick
+          <input type="checkbox" id="task-quick" />
+        </label>
         <button id="add-task" class="primary">Add task</button>
       </div>
     </section>
+
+    ${boardControlsHtml()}
 
     ${planListHtml("Today", todayOpen)}
 
