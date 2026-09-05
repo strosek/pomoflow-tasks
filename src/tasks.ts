@@ -1,14 +1,14 @@
-import { todayStart } from "./dates";
+import { startOfLocalDay, todayStart } from "./dates";
 import type { Task } from "./types";
 
 export function isTodayOpen(t: Task): boolean {
-  return !t.done && t.plannedFor != null && t.plannedFor === todayStart();
+  return !t.done && t.plannedFor != null && startOfLocalDay(t.plannedFor) === todayStart();
 }
 
 export function isFutureOpen(t: Task): boolean {
-  return !t.done && t.plannedFor != null && t.plannedFor > todayStart();
+  return !t.done && t.plannedFor != null && startOfLocalDay(t.plannedFor) > todayStart();
 }
 
 export function isOverdueOpen(t: Task): boolean {
-  return !t.done && t.plannedFor != null && t.plannedFor < todayStart();
+  return !t.done && t.plannedFor != null && startOfLocalDay(t.plannedFor) < todayStart();
 }

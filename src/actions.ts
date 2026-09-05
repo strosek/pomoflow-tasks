@@ -1,5 +1,5 @@
 import { announce } from "./announce";
-import { DAY_MS, startOfLocalDay, todayStart, ymdForDate } from "./dates";
+import { DAY_MS, minutesInDay, nextDueDate, startOfLocalDay, todayStart, ymdForDate } from "./dates";
 import { openDialog, showImportError, showMessage, downloadTextFile } from "./dialogs";
 import { escapeHtml } from "./escape";
 import { startRepaint, stopRepaint } from "./repaint";
@@ -41,11 +41,11 @@ import {
 import { doneSessions, sessionWorkMs, taskTotals } from "./stats";
 import { isTodayOpen } from "./tasks";
 import { MIN, formatDuration, snapshot, techniqueLabel } from "./timer";
-import type { Quadrant, Session, Settings, Task, Technique } from "./types";
+import type { Quadrant, Recurrence, Session, Settings, Task, Technique } from "./types";
 import { QUADRANT_LABEL, newId } from "./types";
 import { notify, requestPermission } from "./notify";
 import { playCue } from "./sound";
-import { render } from "./views";
+import { render, positionRowMenu } from "./views";
 
 /* ------------------------------------------------------------------ */
 /* Task parsing                                                        */
@@ -61,6 +61,45 @@ function stripTags(title: string): string {
     .replace(/#[\p{L}\p{N}_-]+/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+const WEEKDAY_NAMES = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+];
+
+function weekdayOptions(selected: number): string {
+  return WEEKDAY_NAMES.map(
+    (name, i) => `<option value="${i}" ${i === selected ? "selected" : ""}>${name}</option>`,
+  ).join("");
+}
+
+function monthDayOptions(selected: number): string {
+  return Array.from({ length: 31 }, (_, i) => i + 1)
+    .map((d) => `<option value="${d}" ${d === selected ? "selected" : ""}>${d}</option>`)
+    .join("");
+}
+
+function timeToInput(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function parseTimeInput(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const [h, m] = value.split(":").map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return undefined;
+  return h * 60 + m;
+}
+
+function currentWeekday(): number {
+  return new Date().getDay();
 }
 
 /* ------------------------------------------------------------------ */
@@ -91,6 +130,7 @@ export function addTask(): void {
     tags: parseTags(rawTitle),
     description: "",
     plannedFor: null,
+    recurrence: null,
   });
   persist();
   render();
@@ -99,6 +139,13 @@ export function addTask(): void {
 function toggleTask(id: string): void {
   const task = taskById(id);
   if (!task) return;
+  // 0043: completing a recurring task immediately reopens it for its next occurrence.
+  if (!task.done && task.recurrence) {
+    task.plannedFor = nextDueDate(task.recurrence, Date.now());
+    persist();
+    render();
+    return;
+  }
   task.done = !task.done;
   task.doneAt = task.done ? Date.now() : null;
   persist();
@@ -157,6 +204,110 @@ function openDeferDialog(id: string): void {
       const date = new Date(y, (m ?? 1) - 1, d ?? 1);
       task.plannedFor = startOfLocalDay(date.getTime());
     }
+    persist();
+    overlay.remove();
+    render();
+  });
+}
+
+function openRecurrenceDialog(id: string): void {
+  const task = taskById(id);
+  if (!task) return;
+
+  const now = new Date();
+  const defaultDate = task.plannedFor && startOfLocalDay(task.plannedFor) > todayStart()
+    ? task.plannedFor
+    : Date.now() + DAY_MS;
+  const defaultTime =
+    task.recurrence?.time ?? minutesInDay(Date.now());
+
+  const weekdaySelected =
+    task.recurrence?.every === "weekly"
+      ? task.recurrence.weekday ?? currentWeekday()
+      : currentWeekday();
+  const daySelected =
+    task.recurrence?.every === "monthly"
+      ? task.recurrence.day ?? now.getDate()
+      : now.getDate();
+
+  const overlay = openDialog(`
+    <h3>Repeats</h3>
+    <p class="dialog-task">${escapeHtml(task.title)}</p>
+    <div class="field-row">
+      <label class="field">
+        <span>Date</span>
+        <input type="date" id="recur-date" value="${ymdForDate(defaultDate)}" />
+      </label>
+      <label class="field">
+        <span>Time</span>
+        <input type="time" id="recur-time" value="${timeToInput(defaultTime)}" />
+      </label>
+    </div>
+    <label class="field">
+      <span>Repeat</span>
+      <select id="recur-every">
+        <option value="none" ${!task.recurrence ? "selected" : ""}>Doesn't repeat (one-time)</option>
+        <option value="daily" ${task.recurrence?.every === "daily" ? "selected" : ""}>Daily</option>
+        <option value="workdays" ${task.recurrence?.every === "workdays" ? "selected" : ""}>Work days (Mon–Fri)</option>
+        <option value="weekly" ${task.recurrence?.every === "weekly" ? "selected" : ""}>Weekly</option>
+        <option value="monthly" ${task.recurrence?.every === "monthly" ? "selected" : ""}>Monthly</option>
+      </select>
+    </label>
+    <label class="field" id="recur-weekday-field" ${task.recurrence?.every === "weekly" ? "" : "hidden"}>
+      <span>On weekday</span>
+      <select id="recur-weekday">${weekdayOptions(weekdaySelected)}</select>
+    </label>
+    <label class="field" id="recur-day-field" ${task.recurrence?.every === "monthly" ? "" : "hidden"}>
+      <span>Day of month</span>
+      <select id="recur-day">${monthDayOptions(daySelected)}</select>
+    </label>
+    <div class="dialog-actions">
+      <button id="recur-cancel" class="ghost">Cancel</button>
+      <button id="recur-save" class="primary">Save</button>
+    </div>`);
+
+  overlay.querySelector("#recur-cancel")!.addEventListener("click", () => overlay.remove());
+
+  const toggleFields = () => {
+    const mode = overlay.querySelector<HTMLSelectElement>("#recur-every")?.value ?? "none";
+    overlay.querySelector<HTMLElement>("#recur-weekday-field")!.hidden = mode !== "weekly";
+    overlay.querySelector<HTMLElement>("#recur-day-field")!.hidden = mode !== "monthly";
+  };
+  overlay.querySelector("#recur-every")?.addEventListener("change", toggleFields);
+
+  overlay.querySelector("#recur-save")!.addEventListener("click", () => {
+    const dateValue = overlay.querySelector<HTMLInputElement>("#recur-date")?.value;
+    const time = parseTimeInput(overlay.querySelector<HTMLInputElement>("#recur-time")?.value);
+    const mode = overlay.querySelector<HTMLSelectElement>("#recur-every")?.value ?? "none";
+
+    let dueAt = task.plannedFor ?? Date.now();
+    if (dateValue) {
+      const [y, m, d] = dateValue.split("-").map(Number);
+      const date = new Date(y, (m ?? 1) - 1, d ?? 1);
+      dueAt = startOfLocalDay(date.getTime()) + (time ?? 0) * 60_000;
+    }
+
+    let recurrence: Recurrence | null = null;
+    if (mode === "daily") {
+      recurrence = { every: "daily", ...(time !== undefined ? { time } : {}) };
+    } else if (mode === "workdays") {
+      recurrence = { every: "workdays", ...(time !== undefined ? { time } : {}) };
+    } else if (mode === "weekly") {
+      recurrence = {
+        every: "weekly",
+        weekday: Number(overlay.querySelector<HTMLSelectElement>("#recur-weekday")?.value ?? currentWeekday()),
+        ...(time !== undefined ? { time } : {}),
+      };
+    } else if (mode === "monthly") {
+      recurrence = {
+        every: "monthly",
+        day: Number(overlay.querySelector<HTMLSelectElement>("#recur-day")?.value ?? new Date().getDate()),
+        ...(time !== undefined ? { time } : {}),
+      };
+    }
+
+    task.plannedFor = dueAt;
+    task.recurrence = recurrence;
     persist();
     overlay.remove();
     render();
@@ -261,6 +412,38 @@ function openEditTask(id: string): void {
         </label>
       </div>
       <label class="field">
+        <span>Repeats</span>
+        <div class="field-row">
+          <select id="edit-recurrence">
+            <option value="none" ${!task.recurrence ? "selected" : ""}>Doesn't repeat</option>
+            <option value="daily" ${task.recurrence?.every === "daily" ? "selected" : ""}>Daily</option>
+            <option value="workdays" ${task.recurrence?.every === "workdays" ? "selected" : ""}>Work days</option>
+            <option value="weekly" ${task.recurrence?.every === "weekly" ? "selected" : ""}>Weekly</option>
+            <option value="monthly" ${task.recurrence?.every === "monthly" ? "selected" : ""}>Monthly</option>
+          </select>
+          <select
+            id="edit-recurrence-weekday"
+            ${task.recurrence?.every === "weekly" ? "" : "hidden"}
+            aria-label="Weekday"
+          >
+            ${weekdayOptions(task.recurrence?.every === "weekly" ? task.recurrence.weekday ?? currentWeekday() : currentWeekday())}
+          </select>
+          <select
+            id="edit-recurrence-day"
+            ${task.recurrence?.every === "monthly" ? "" : "hidden"}
+            aria-label="Day of month"
+          >
+            ${monthDayOptions(task.recurrence?.every === "monthly" ? task.recurrence.day ?? new Date().getDate() : new Date().getDate())}
+          </select>
+          <input
+            type="time"
+            id="edit-recurrence-time"
+            value="${timeToInput(task.recurrence?.time ?? minutesInDay(Date.now()))}"
+            aria-label="Time of day"
+          />
+        </div>
+      </label>
+      <label class="field">
         <span>Tags (#tag)</span>
         <input type="text" id="edit-tags" value="${escapeHtml((task.tags ?? []).join(" "))}" placeholder="#work #home" />
       </label>
@@ -277,6 +460,17 @@ function openEditTask(id: string): void {
   const form = overlay.querySelector<HTMLFormElement>("#edit-form")!;
   overlay.querySelector("#edit-cancel")!.addEventListener("click", () => overlay.remove());
 
+  const toggleRecurrenceFields = () => {
+    const mode = overlay.querySelector<HTMLSelectElement>("#edit-recurrence")?.value ?? "none";
+    const weekday = overlay.querySelector<HTMLSelectElement>("#edit-recurrence-weekday")!;
+    const day = overlay.querySelector<HTMLSelectElement>("#edit-recurrence-day")!;
+    weekday.hidden = mode !== "weekly";
+    day.hidden = mode !== "monthly";
+  };
+  overlay
+    .querySelector("#edit-recurrence")
+    ?.addEventListener("change", toggleRecurrenceFields);
+
   form.addEventListener("submit", (e) => {
     e.preventDefault();
     const titleField = overlay.querySelector<HTMLInputElement>("#edit-title")!.value;
@@ -285,6 +479,25 @@ function openEditTask(id: string): void {
     if (!cleanTitle && !titleField.trim()) return;
     const estRaw = overlay.querySelector<HTMLInputElement>("#edit-estimate")?.value.trim() ?? "";
     const est = estRaw === "" ? null : Number(estRaw);
+
+    const recurMode = overlay.querySelector<HTMLSelectElement>("#edit-recurrence")?.value ?? "none";
+    const time = parseTimeInput(overlay.querySelector<HTMLInputElement>("#edit-recurrence-time")?.value);
+    let recurrence: Recurrence | null = null;
+    if (recurMode === "daily") {
+      recurrence = { every: "daily", ...(time !== undefined ? { time } : {}) };
+    } else if (recurMode === "workdays") {
+      recurrence = { every: "workdays", ...(time !== undefined ? { time } : {}) };
+    } else if (recurMode === "weekly") {
+      const weekday = Number(
+        overlay.querySelector<HTMLSelectElement>("#edit-recurrence-weekday")?.value ?? 0,
+      );
+      recurrence = { every: "weekly", weekday, ...(time !== undefined ? { time } : {}) };
+    } else if (recurMode === "monthly") {
+      const day = Number(
+        overlay.querySelector<HTMLSelectElement>("#edit-recurrence-day")?.value ?? 1,
+      );
+      recurrence = { every: "monthly", day, ...(time !== undefined ? { time } : {}) };
+    }
 
     task.title = cleanTitle || titleField.trim();
     task.priority = Math.min(
@@ -296,6 +509,7 @@ function openEditTask(id: string): void {
     task.quick = overlay.querySelector<HTMLInputElement>("#edit-quick")?.checked ?? false;
     task.tags = parseTags(`${titleField} ${tagsField}`);
     task.description = overlay.querySelector<HTMLTextAreaElement>("#edit-desc")!.value;
+    task.recurrence = recurrence;
     persist();
     overlay.remove();
     render();
@@ -1057,6 +1271,9 @@ export function handleAction(action: string | undefined, id: string | undefined)
     case "defer":
       if (id) openDeferDialog(id);
       break;
+    case "repeats":
+      if (id) openRecurrenceDialog(id);
+      break;
     case "delete":
       if (id) confirmDeleteTask(id);
       break;
@@ -1074,6 +1291,7 @@ export function handleAction(action: string | undefined, id: string | undefined)
         setOpenMenuTaskId(openMenuTaskId === id ? null : id);
       }
       render();
+      positionRowMenu();
       break;
     case "start":
       if (id) promptStartSession(id);

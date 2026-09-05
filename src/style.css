@@ -826,9 +826,7 @@ button:focus-visible {
 /* Overdue tasks (0030) */
 
 .task.overdue {
-  border-top-color: var(--clay);
-  border-right-color: var(--clay);
-  border-bottom-color: var(--clay);
+  box-shadow: inset 3px 0 0 var(--clay);
 }
 
 .overdue-badge {
@@ -841,6 +839,21 @@ button:focus-visible {
   vertical-align: middle;
 }
 
+/* Recurring tasks (0043) */
+
+.recur-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  color: var(--text-faint);
+  vertical-align: middle;
+}
+
+.recur-badge .icon {
+  width: 13px;
+  height: 13px;
+}
+
 /* Row "⋯" menu (0037) */
 
 .task {
@@ -851,7 +864,7 @@ button:focus-visible {
   position: absolute;
   right: 8px;
   top: calc(100% - 4px);
-  z-index: 5;
+  z-index: 40;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -873,7 +886,7 @@ button:focus-visible {
 }
 
 .row-menu button:hover {
-  background: var(--bg-soft);
+  background: var(--surface-2);
   color: var(--text);
 }
 

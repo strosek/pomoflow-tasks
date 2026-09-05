@@ -61,6 +61,7 @@ function task(overrides: Partial<Task> = {}): Task {
     tags: [],
     description: "",
     plannedFor: null,
+    recurrence: null,
     ...overrides,
   };
 }

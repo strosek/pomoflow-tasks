@@ -10,6 +10,17 @@ export type SoundPreset = "chime" | "soft" | "breeze";
 
 export type Phase = "work" | "shortBreak" | "longBreak";
 
+/**
+ * 0043: recurrence schedule for a task. `time` is minutes from local midnight
+ * (the time of day the occurrence is due); omitted means "no specific time".
+ */
+export type Recurrence =
+  | { every: "daily"; time?: number }
+  | { every: "workdays"; time?: number } // Monday–Friday
+  | { every: "weekly"; weekday?: number; time?: number } // 0 = Sunday .. 6 = Saturday; defaults to completion weekday
+  | { every: "monthly"; day?: number; time?: number } // day of month (1..31); defaults to completion day
+  | { every: "days"; interval: number; time?: number }; // legacy "every N days" (not offered in the UI)
+
 export interface Task {
   id: string;
   title: string;
@@ -23,6 +34,7 @@ export interface Task {
   tags: string[]; // parsed from #tags at creation
   description: string; // optional longer description (0026)
   plannedFor: number | null; // local midnight of the planned day (0029/0030)
+  recurrence: Recurrence | null; // 0043: repeats after completion (null = one-off)
 }
 
 /** 0014: break countdown started automatically after finishing a session. */

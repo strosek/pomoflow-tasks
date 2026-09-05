@@ -84,6 +84,7 @@ describe("sanitizeState", () => {
           tags: [],
           description: "",
           plannedFor: null,
+          recurrence: null,
         },
       ],
       sessions: [
@@ -123,6 +124,32 @@ describe("sanitizeState", () => {
   it("falls back to the default priority for non-numbers", () => {
     const out = sanitizeState({ tasks: [{ id: "t1", priority: "high" }] });
     expect(out.tasks[0].priority).toBe(3);
+  });
+
+  it("sanitizes recurrence rules and drops invalid ones", () => {
+    const out = sanitizeState({
+      tasks: [
+        { id: "t1", recurrence: { every: "daily", time: 9 * 60 } },
+        { id: "t2", recurrence: { every: "weekly", weekday: 3 } },
+        { id: "t3", recurrence: { every: "days", interval: 0 } },
+        { id: "t4", recurrence: { every: "yearly" } },
+        { id: "t5", recurrence: { every: "weekly", weekday: 99 } },
+        { id: "t6", recurrence: "garbage" },
+        { id: "t7", recurrence: { every: "workdays" } },
+        { id: "t8", recurrence: { every: "monthly", day: 31 } },
+        { id: "t9", recurrence: { every: "daily", time: 9999 } },
+      ],
+    });
+    const byId = new Map(out.tasks.map((t) => [t.id, t]));
+    expect(byId.get("t1")?.recurrence).toEqual({ every: "daily", time: 540 });
+    expect(byId.get("t2")?.recurrence).toEqual({ every: "weekly", weekday: 3 });
+    expect(byId.get("t3")?.recurrence).toEqual({ every: "days", interval: 1 });
+    expect(byId.get("t4")?.recurrence).toBeNull();
+    expect(byId.get("t5")?.recurrence).toEqual({ every: "weekly" });
+    expect(byId.get("t6")?.recurrence).toBeNull();
+    expect(byId.get("t7")?.recurrence).toEqual({ every: "workdays" });
+    expect(byId.get("t8")?.recurrence).toEqual({ every: "monthly", day: 31 });
+    expect(byId.get("t9")?.recurrence).toEqual({ every: "daily" });
   });
 
   it("defaults missing arrays to empty", () => {
@@ -216,6 +243,7 @@ describe("persistence", () => {
           tags: [],
           description: "",
           plannedFor: null,
+          recurrence: null,
         },
       ],
     };

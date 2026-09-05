@@ -29,6 +29,7 @@ peace of mind to feature creep. It is designed to be:
 - Tags (`#errands`), descriptions, and optional time estimates
 - Plan for today or defer to a later date; overdue is surfaced clearly
 - Quick tasks for the tiny stuff, batched into one continuous run
+- Recurring tasks (daily, work days, weekly, or monthly) with a scheduled time that reopen after completion
 - Search, filter, and sort
 
 ### Focus, your way

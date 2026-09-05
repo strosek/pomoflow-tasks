@@ -17,7 +17,7 @@ import {
   taskById,
   timerConfig,
 } from "./state";
-import { formatDay, startOfWeek } from "./dates";
+import { formatDay, formatTimeOfDay, startOfLocalDay, startOfWeek } from "./dates";
 import { escapeHtml } from "./escape";
 import { icon } from "./icons";
 import {
@@ -43,7 +43,7 @@ import {
   techniqueLabel,
 } from "./timer";
 import { isFutureOpen, isOverdueOpen, isTodayOpen } from "./tasks";
-import type { Quadrant, Session, Task } from "./types";
+import type { Quadrant, Recurrence, Session, Task } from "./types";
 import { QUADRANT_LABEL } from "./types";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
@@ -80,6 +80,33 @@ export function render(): void {
   } else {
     renderBoard();
   }
+}
+
+/** 0037: keep the open row menu inside the viewport (flip upward near the bottom). */
+export function positionRowMenu(): void {
+  const menu = document.querySelector<HTMLElement>("[data-menu]");
+  if (!menu) return;
+  const task = menu.closest<HTMLElement>(".task");
+  const btn = task?.querySelector<HTMLElement>('[data-action="open-menu"]');
+  if (!btn) return;
+
+  const rect = btn.getBoundingClientRect();
+  const gap = 6;
+  const menuWidth = menu.offsetWidth;
+  const menuHeight = menu.offsetHeight;
+
+  const left = Math.min(Math.max(8, rect.right - menuWidth), window.innerWidth - menuWidth - 8);
+  let top = rect.bottom + gap;
+  if (top + menuHeight > window.innerHeight - 8) {
+    top = rect.top - menuHeight - gap;
+  }
+  top = Math.max(8, top);
+
+  menu.style.position = "fixed";
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+  menu.style.right = "auto";
+  menu.style.bottom = "auto";
 }
 
 function pageHeaderHtml(): string {
@@ -203,13 +230,13 @@ function planListHtml(title: string, items: Task[], extraClass = ""): string {
                 : `<button class="icon-btn" data-action="today" data-id="${t.id}" title="Remove from today" aria-label="Remove from today">${icon("x")}</button>`;
             const date =
               extraClass === "deferred"
-                ? `<span class="later-date">${formatDay(t.plannedFor!)}</span>`
+                ? `<span class="later-date">${formatDue(t.plannedFor!)}</span>`
                 : "";
             return `
               <li class="quick-item">
                 <button class="check" data-action="toggle" data-id="${t.id}" aria-label="Toggle done" aria-pressed="${t.done ? "true" : "false"}"></button>
                 ${date}
-                <span class="task-title">${escapeHtml(t.title)}</span>
+                <span class="task-title">${escapeHtml(t.title)}${recurrenceBadgeHtml(t.recurrence)}</span>
                 ${unplan}
                 <button class="primary icon-btn" data-action="start" data-id="${t.id}" title="Start session" aria-label="Start session">${icon("play")}</button>
               </li>`;
@@ -231,6 +258,48 @@ const PRIORITY_COLORS = [
   "var(--moss)",
   "var(--text-faint)",
 ];
+
+const WEEKDAY_NAMES = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+];
+
+/** 0043: short human label for a recurrence rule (shown in menus / tooltips). */
+function recurrenceLabel(rec: Recurrence | null): string {
+  if (!rec) return "once";
+  const time = formatTimeOfDay(rec.time);
+  const timeBit = time ? ` · ${time}` : "";
+  switch (rec.every) {
+    case "daily":
+      return `daily${timeBit}`;
+    case "workdays":
+      return `work days${timeBit}`;
+    case "weekly":
+      return `weekly (${WEEKDAY_NAMES[rec.weekday ?? new Date().getDay()]})${timeBit}`;
+    case "monthly":
+      return `monthly (day ${rec.day ?? "completion"})${timeBit}`;
+    case "days":
+      return `every ${rec.interval} days${timeBit}`;
+  }
+}
+
+/** Day label for a scheduled timestamp, with the time of day when one is set. */
+function formatDue(ms: number): string {
+  const day = formatDay(ms);
+  const time = formatTimeOfDay((ms - startOfLocalDay(ms)) / 60_000);
+  return time ? `${day} · ${time}` : day;
+}
+
+/** 0043: small inline "repeats" badge for a task row. */
+function recurrenceBadgeHtml(rec: Recurrence | null): string {
+  if (!rec) return "";
+  return `<span class="recur-badge" title="Repeats ${recurrenceLabel(rec)}" aria-label="Repeats ${recurrenceLabel(rec)}">${icon("repeat")}</span>`;
+}
 
 function priorityLabel(priority: number): string {
   return `<span class="priority-pill" style="color:${PRIORITY_COLORS[priority]}" title="Priority ${priority} of 5" aria-label="Priority ${priority} of 5">P${priority}</span>`;
@@ -311,7 +380,7 @@ function renderBoard(): void {
       <li class="task ${task.quadrant} ${task.done ? "done" : ""} ${isOverdueOpen(task) ? "overdue" : ""}">
         <button class="check" data-action="toggle" data-id="${task.id}" aria-label="Toggle done" aria-pressed="${task.done ? "true" : "false"}">${task.done ? "✓" : ""}</button>
         <div class="task-body">
-          <span class="task-title">${escapeHtml(task.title)}${isOverdueOpen(task) ? `<span class="overdue-badge">overdue</span>` : ""}</span>
+          <span class="task-title">${escapeHtml(task.title)}${recurrenceBadgeHtml(task.recurrence)}${isOverdueOpen(task) ? `<span class="overdue-badge">overdue</span>` : ""}</span>
           <span class="task-meta">
             <span class="quadrant ${task.quadrant}">${QUADRANT_LABEL[task.quadrant]}</span>
             ${priorityLabel(task.priority)}
@@ -339,6 +408,7 @@ function renderBoard(): void {
               ? `<div class="row-menu" data-menu>
                   <button data-action="today" data-id="${task.id}">${isTodayOpen(task) ? "Unplan today" : "Plan today"}</button>
                   <button data-action="defer" data-id="${task.id}">Defer…</button>
+                  <button data-action="repeats" data-id="${task.id}">${task.recurrence ? `Repeats: ${recurrenceLabel(task.recurrence)}` : "Repeat…"}</button>
                   <button data-action="edit" data-id="${task.id}">Edit</button>
                   <button data-action="task-history" data-id="${task.id}">History</button>
                   <button data-action="delete" data-id="${task.id}">Delete</button>

@@ -113,6 +113,50 @@ export function saveSettings(settings: Settings): void {
 /* State sanitization                                                  */
 /* ------------------------------------------------------------------ */
 
+function sanitizeTime(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  const m = Math.round(value);
+  if (m < 0 || m > 23 * 60 + 59) return undefined;
+  return m;
+}
+
+function sanitizeRecurrence(raw: unknown): Task["recurrence"] {
+  if (typeof raw !== "object" || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+  const time = sanitizeTime(r.time);
+  if (r.every === "daily") {
+    return time === undefined ? { every: "daily" } : { every: "daily", time };
+  }
+  if (r.every === "workdays") {
+    return time === undefined ? { every: "workdays" } : { every: "workdays", time };
+  }
+  if (r.every === "weekly") {
+    const weekday = typeof r.weekday === "number" ? Math.round(r.weekday) : undefined;
+    const w =
+      weekday !== undefined && weekday >= 0 && weekday <= 6 ? weekday : undefined;
+    const rec: Task["recurrence"] = { every: "weekly", ...(w !== undefined ? { weekday: w } : {}) };
+    if (time !== undefined) rec.time = time;
+    return rec;
+  }
+  if (r.every === "monthly") {
+    const day = typeof r.day === "number" ? Math.round(r.day) : undefined;
+    const d = day !== undefined && day >= 1 && day <= 31 ? day : undefined;
+    const rec: Task["recurrence"] = { every: "monthly", ...(d !== undefined ? { day: d } : {}) };
+    if (time !== undefined) rec.time = time;
+    return rec;
+  }
+  if (r.every === "days") {
+    const interval =
+      typeof r.interval === "number" && Number.isFinite(r.interval)
+        ? Math.max(1, Math.round(r.interval))
+        : 1;
+    const rec: Task["recurrence"] = { every: "days", interval };
+    if (time !== undefined) rec.time = time;
+    return rec;
+  }
+  return null;
+}
+
 function sanitizeTask(raw: unknown): Task {
   const t = (typeof raw === "object" && raw !== null ? raw : {}) as Partial<Task>;
   return {
@@ -132,6 +176,7 @@ function sanitizeTask(raw: unknown): Task {
     tags: Array.isArray(t.tags) ? t.tags.filter((x): x is string => typeof x === "string") : [],
     description: str(t.description),
     plannedFor: typeof t.plannedFor === "number" ? t.plannedFor : null,
+    recurrence: sanitizeRecurrence(t.recurrence),
   };
 }
 
